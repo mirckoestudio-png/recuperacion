@@ -12,6 +12,28 @@
 
   var PHASES = [
     {
+      id: 0,
+      short: 'Preparación',
+      title: 'Antes de la cirugía (prehabilitación)',
+      range: 'Hasta el día de la operación',
+      startDay: -100000,
+      flexTarget: 120,
+      goals: [
+        'Llegar a la cirugía con la rodilla "tranquila": sin hinchazón y con la extensión completa.',
+        'Mantener o recuperar la flexión.',
+        'Fortalecer cuádriceps y glúteos: cuanto más fuerte llegues, más rápido te recuperarás.',
+        'Aprender los ejercicios del postoperatorio y a usar las muletas.',
+        'Evitar giros, saltos y deportes: con el LCA roto la rodilla es inestable.'
+      ],
+      criteria: [
+        { id: 'p0-ext', text: 'Extensión completa (rodilla totalmente recta)' },
+        { id: 'p0-flex', text: 'Flexión de 120° o más' },
+        { id: 'p0-swell', text: 'Sin hinchazón' },
+        { id: 'p0-slr', text: 'Elevas la pierna recta sin que la rodilla se doble' },
+        { id: 'p0-learn', text: 'Sabes hacer los ejercicios de la fase 1' }
+      ]
+    },
+    {
       id: 1,
       short: 'Protección',
       title: 'Protección y control de la inflamación',
@@ -26,7 +48,7 @@
         'Moverte con seguridad con muletas o andador, como te indiquen.'
       ],
       criteria: [
-        { id: 'p1-ext', text: 'Extensión completa o casi (déficit de 0–5°) en ambas rodillas' },
+        { id: 'p1-ext', text: 'Extensión completa o casi (le faltan 0–5°)' },
         { id: 'p1-flex', text: 'Flexión de al menos 90°' },
         { id: 'p1-slr', text: 'Elevas la pierna recta sin que la rodilla se doble' },
         { id: 'p1-wound', text: 'Herida cerrada, sin signos de infección, hinchazón controlada' }
@@ -42,14 +64,14 @@
       goals: [
         'Caminar sin cojear y dejar las muletas cuando te lo autoricen.',
         'Llegar a unos 120° de flexión.',
-        'Mantener la extensión completa en las dos rodillas.',
+        'Mantener la extensión completa.',
         'Fortalecer cuádriceps, glúteos y gemelos con ejercicios de pie (cadena cerrada).',
         'Empezar a trabajar el equilibrio.'
       ],
       criteria: [
         { id: 'p2-gait', text: 'Caminas sin muletas y sin cojear' },
         { id: 'p2-flex', text: 'Flexión de al menos 120°' },
-        { id: 'p2-ext', text: 'Extensión completa en ambas rodillas' },
+        { id: 'p2-ext', text: 'Extensión completa' },
         { id: 'p2-swell', text: 'La rodilla no se hincha más después de los ejercicios' },
         { id: 'p2-stairs', text: 'Subes escaleras alternando los pies' }
       ]
@@ -108,10 +130,11 @@
         'Cambios de dirección, agilidad y velocidad.',
         'Entrenamiento específico de tu deporte, de menos a más contacto.',
         'Un programa de prevención de lesiones para siempre.',
-        'Recuperar la confianza en tus rodillas.'
+        'Recuperar la confianza en tus rodillas.',
+        'Volver a competir depende de la rodilla operada más tarde: las dos tienen que cumplir los criterios.'
       ],
       criteria: [
-        { id: 'p5-time', text: 'Han pasado al menos 9 meses desde la cirugía (volver antes aumenta mucho el riesgo de una nueva rotura)' },
+        { id: 'p5-time', text: 'Han pasado al menos 9 meses desde la cirugía de esta rodilla (volver antes aumenta mucho el riesgo de una nueva rotura)' },
         { id: 'p5-tests', text: 'Superas los tests de fuerza y salto de tu fisio' },
         { id: 'p5-mind', text: 'Te sientes seguro/a y con confianza en tus rodillas' },
         { id: 'p5-team', text: 'Entrenas completo con tu equipo sin molestias' },
@@ -122,7 +145,11 @@
 
   /*
    * Ejercicios.
-   *  phases       fases en las que aparece
+   *  legs         'one'  = se hace con cada pierna por separado: sigue la fase de esa rodilla
+   *               'both' = trabajan las dos piernas a la vez: solo aparece cuando las dos
+   *                        rodillas lo permiten (va al ritmo de la operada más tarde)
+   *               'any'  = cuidado general: aparece si alguna rodilla lo necesita
+   *  phases       fases en las que aparece (0 = antes de operarse)
    *  perDay       veces al día (cada toque en la app cuenta una)
    *  optional     no cuenta para el % del día (días alternos, depende de autorización…)
    *  timer        { work, rest, reps } en segundos para el temporizador guiado
@@ -138,6 +165,7 @@
       id: 'hielo',
       name: 'Hielo, elevación y compresión',
       cat: 'cuidado',
+      legs: 'one',
       phases: [1, 2],
       perDay: 3,
       dose: '15–20 min, 3–4 veces al día y después de ejercitarte',
@@ -153,6 +181,7 @@
       id: 'tobillos',
       name: 'Bombeo de tobillos',
       cat: 'cuidado',
+      legs: 'any',
       phases: [1, 2],
       perDay: 4,
       dose: '20 repeticiones cada 1–2 horas mientras estés despierto/a',
@@ -167,9 +196,10 @@
       id: 'cuadriceps-iso',
       name: 'Contracción de cuádriceps',
       cat: 'fuerza',
-      phases: [1, 2],
+      legs: 'one',
+      phases: [0, 1, 2],
       perDay: 3,
-      dose: '10 repeticiones de 10 s, 3 veces al día (cada pierna)',
+      dose: '10 repeticiones de 10 s, 3 veces al día',
       timer: { work: 10, rest: 5, reps: 10 },
       why: 'Tras la cirugía el cuádriceps se "desconecta". Reactivarlo es la base para caminar bien y proteger el injerto.',
       how: [
@@ -182,9 +212,10 @@
       id: 'extension-pasiva',
       name: 'Extensión pasiva con talón elevado',
       cat: 'movilidad',
-      phases: [1, 2],
+      legs: 'one',
+      phases: [0, 1, 2],
       perDay: 3,
-      dose: '10 min, 3–4 veces al día (puedes hacer las dos piernas a la vez)',
+      dose: '10 min, 3–4 veces al día',
       timer: { work: 600 },
       why: 'Recuperar pronto la extensión completa es lo más importante: si se pierde cuesta mucho recuperarla y te hará cojear.',
       how: [
@@ -198,9 +229,10 @@
       id: 'rotula',
       name: 'Movilización de rótula',
       cat: 'movilidad',
+      legs: 'one',
       phases: [1, 2],
       perDay: 2,
-      dose: '2 min por rodilla, 2 veces al día',
+      dose: '2 min, 2 veces al día',
       why: 'Evita que la rótula se quede "pegada", lo que limitaría tanto la flexión como la extensión.',
       how: [
         'Pierna estirada y el muslo relajado.',
@@ -212,9 +244,10 @@
       id: 'deslizamiento-talon',
       name: 'Deslizamiento de talón (flexión)',
       cat: 'movilidad',
-      phases: [1, 2],
+      legs: 'one',
+      phases: [0, 1, 2],
       perDay: 3,
-      dose: '10–15 repeticiones, 3 veces al día (cada pierna)',
+      dose: '10–15 repeticiones, 3 veces al día',
       timer: { work: 5, rest: 3, reps: 15 },
       why: 'Recupera la flexión de forma progresiva y controlada.',
       how: [
@@ -230,9 +263,10 @@
       id: 'elevacion-recta',
       name: 'Elevación de pierna recta',
       cat: 'fuerza',
-      phases: [1, 2],
+      legs: 'one',
+      phases: [0, 1, 2],
       perDay: 2,
-      dose: '3 series de 10, 1–2 veces al día (cada pierna)',
+      dose: '3 series de 10, 1–2 veces al día',
       why: 'Fortalece el cuádriceps sin cargar la rodilla.',
       how: [
         'Tumbado/a boca arriba; la otra pierna estirada o doblada, como te resulte cómodo.',
@@ -245,9 +279,10 @@
       id: 'abduccion-cadera',
       name: 'Abducción de cadera de lado',
       cat: 'fuerza',
-      phases: [1, 2, 3],
+      legs: 'one',
+      phases: [0, 1, 2, 3],
       perDay: 1,
-      dose: '3 series de 10–15 por lado',
+      dose: '3 series de 10–15',
       why: 'El glúteo medio controla que la rodilla no se vaya hacia dentro al caminar y al bajar.',
       how: [
         'Tumbado/a de lado con un cojín entre las rodillas (con las dos operadas es más cómodo).',
@@ -261,6 +296,7 @@
       id: 'transferencias',
       name: 'Transferencias de peso',
       cat: 'equilibrio',
+      legs: 'both',
       phases: [2],
       perDay: 2,
       dose: '2–3 min, 2 veces al día',
@@ -277,6 +313,7 @@
       id: 'marcha',
       name: 'Práctica de marcha',
       cat: 'equilibrio',
+      legs: 'both',
       phases: [2],
       perDay: 2,
       dose: '5–10 min, 2 veces al día',
@@ -296,7 +333,8 @@
       id: 'mini-sentadilla',
       name: 'Mini sentadilla (0–45°)',
       cat: 'fuerza',
-      phases: [2],
+      legs: 'both',
+      phases: [0, 2],
       perDay: 1,
       dose: '3 series de 10–15',
       why: 'Fuerza de pie (cadena cerrada): es segura para el injerto y trabaja las dos piernas a la vez.',
@@ -311,7 +349,8 @@
       id: 'puente',
       name: 'Puente de glúteos',
       cat: 'fuerza',
-      phases: [2, 3],
+      legs: 'both',
+      phases: [0, 2, 3],
       perDay: 1,
       dose: '3 series de 10–12, manteniendo 3 s arriba',
       timer: { work: 3, rest: 2, reps: 12 },
@@ -330,7 +369,8 @@
       id: 'talones',
       name: 'Elevación de talones',
       cat: 'fuerza',
-      phases: [2, 3],
+      legs: 'both',
+      phases: [0, 2, 3],
       perDay: 1,
       dose: '3 series de 15',
       why: 'Los gemelos también estabilizan la rodilla y ayudan a caminar mejor.',
@@ -344,7 +384,8 @@
       id: 'bicicleta',
       name: 'Bicicleta estática',
       cat: 'cardio',
-      phases: [2, 3, 4],
+      legs: 'both',
+      phases: [0, 2, 3, 4],
       perDay: 1,
       dose: 'Fase 2: 10–15 min sin resistencia · Fase 3–4: 20–30 min con resistencia progresiva',
       timer: { work: 900 },
@@ -361,17 +402,17 @@
       id: 'equilibrio',
       name: 'Equilibrio a una pierna',
       cat: 'equilibrio',
-      phases: [2, 3, 4],
+      legs: 'one',
+      phases: [0, 2, 3, 4],
       perDay: 1,
-      dose: '3 × 30 s por pierna',
-      timer: { work: 30, rest: 15, reps: 6 },
+      dose: '3 × 30 s',
+      timer: { work: 30, rest: 15, reps: 3 },
       why: 'Reentrena la propiocepción: la capacidad de la rodilla de "saber" dónde está.',
       how: [
         'Junto a una encimera, apóyate en una pierna con la rodilla ligeramente flexionada.',
-        'Progresión: sin manos → ojos cerrados → sobre un cojín → lanzando una pelota.',
-        'Alterna las piernas en cada repetición.'
+        'Progresión: sin manos → ojos cerrados → sobre un cojín → lanzando una pelota.'
       ],
-      caution: 'Con las dos rodillas operadas, ten siempre un apoyo al alcance.'
+      caution: 'Ten siempre un apoyo al alcance: la otra rodilla también está en recuperación.'
     },
 
     // ───────────── Fase 3 ─────────────
@@ -379,6 +420,7 @@
       id: 'sentadilla',
       name: 'Sentadilla a silla',
       cat: 'fuerza',
+      legs: 'both',
       phases: [3, 4],
       perDay: 1,
       dose: '3 series de 10–12',
@@ -397,9 +439,10 @@
       id: 'subida-escalon',
       name: 'Subida a escalón',
       cat: 'fuerza',
+      legs: 'one',
       phases: [3, 4],
       perDay: 1,
-      dose: '3 series de 10 por pierna',
+      dose: '3 series de 10',
       why: 'Fuerza de una pierna en un gesto de la vida diaria.',
       how: [
         'Escalón de 10–20 cm con barandilla al lado.',
@@ -411,9 +454,10 @@
       id: 'bajada-escalon',
       name: 'Bajada de escalón controlada',
       cat: 'fuerza',
+      legs: 'one',
       phases: [3, 4],
       perDay: 1,
-      dose: '3 series de 8 por pierna',
+      dose: '3 series de 8',
       why: 'Control al frenar (excéntrico): clave para bajar escaleras y aterrizar de saltos.',
       how: [
         'De pie sobre un escalón bajo, con apoyo cerca.',
@@ -425,6 +469,7 @@
       id: 'banda-lateral',
       name: 'Pasos laterales con banda',
       cat: 'fuerza',
+      legs: 'both',
       phases: [3, 4],
       perDay: 1,
       dose: '3 series de 10 pasos hacia cada lado',
@@ -439,6 +484,7 @@
       id: 'peso-muerto',
       name: 'Peso muerto rumano',
       cat: 'fuerza',
+      legs: 'both',
       phases: [3, 4, 5],
       perDay: 1,
       dose: '3 series de 10',
@@ -454,6 +500,7 @@
       id: 'curl-isquios',
       name: 'Curl de isquiotibiales',
       cat: 'fuerza',
+      legs: 'one',
       phases: [3, 4, 5],
       perDay: 1,
       dose: '3 series de 12',
@@ -472,6 +519,7 @@
       id: 'extension-rodilla',
       name: 'Extensión de rodilla sentado/a',
       cat: 'fuerza',
+      legs: 'one',
       phases: [3, 4, 5],
       perDay: 1,
       dose: '3 series de 12',
@@ -486,6 +534,7 @@
       id: 'prensa',
       name: 'Prensa de piernas',
       cat: 'fuerza',
+      legs: 'both',
       phases: [3, 4, 5],
       perDay: 1,
       optional: true,
@@ -504,6 +553,7 @@
       id: 'plancha-lateral',
       name: 'Plancha lateral',
       cat: 'fuerza',
+      legs: 'both',
       phases: [3, 4, 5],
       perDay: 1,
       dose: '3 × 20–30 s por lado',
@@ -521,6 +571,7 @@
       id: 'sentadilla-bulgara',
       name: 'Sentadilla búlgara',
       cat: 'fuerza',
+      legs: 'both',
       phases: [4, 5],
       perDay: 1,
       dose: '3 series de 8 por pierna',
@@ -536,6 +587,7 @@
       id: 'zancadas',
       name: 'Zancadas',
       cat: 'fuerza',
+      legs: 'both',
       phases: [4, 5],
       perDay: 1,
       dose: '3 series de 8 por pierna',
@@ -554,9 +606,10 @@
       id: 'sentadilla-una-pierna',
       name: 'Sentadilla a una pierna a cajón',
       cat: 'fuerza',
+      legs: 'one',
       phases: [4, 5],
       perDay: 1,
-      dose: '3 series de 8 por pierna',
+      dose: '3 series de 8',
       gate: { repairMinDay: 112 },
       why: 'Uno de los mejores indicadores de que la rodilla está lista para correr y saltar.',
       how: [
@@ -569,6 +622,7 @@
       id: 'carrera',
       name: 'Carrera progresiva (caminar–trotar)',
       cat: 'cardio',
+      legs: 'both',
       phases: [4, 5],
       perDay: 1,
       optional: true,
@@ -586,6 +640,7 @@
       id: 'saltos-bilaterales',
       name: 'Saltos con dos piernas y aterrizajes',
       cat: 'pliometria',
+      legs: 'both',
       phases: [4, 5],
       perDay: 1,
       optional: true,
@@ -604,10 +659,11 @@
       id: 'saltos-una-pierna',
       name: 'Saltos a una pierna',
       cat: 'pliometria',
+      legs: 'one',
       phases: [5],
       perDay: 1,
       optional: true,
-      dose: '3 series de 6 por pierna: adelante, lateral y en zigzag',
+      dose: '3 series de 6: adelante, lateral y en zigzag',
       why: 'Prepara la rodilla para las exigencias del deporte.',
       how: [
         'Salta hacia delante sobre una pierna y aguanta el aterrizaje 2 s.',
@@ -619,6 +675,7 @@
       id: 'agilidad',
       name: 'Agilidad y cambios de dirección',
       cat: 'pliometria',
+      legs: 'both',
       phases: [5],
       perDay: 1,
       optional: true,
@@ -635,6 +692,7 @@
       id: 'nordicos',
       name: 'Nórdicos de isquiotibiales',
       cat: 'fuerza',
+      legs: 'both',
       phases: [5],
       perDay: 1,
       optional: true,
@@ -650,6 +708,7 @@
       id: 'prevencion',
       name: 'Calentamiento preventivo (tipo FIFA 11+)',
       cat: 'cuidado',
+      legs: 'both',
       phases: [5],
       perDay: 1,
       optional: true,
@@ -699,8 +758,16 @@
       text: 'Es lo más cómodo, pero hace que la rodilla se quede doblada y se pierda extensión. Para elevar, pon el cojín bajo el talón y la pantorrilla.'
     },
     {
-      title: 'Operación en las dos rodillas',
-      text: 'Al no tener una pierna sana de apoyo, todo va un poco más lento al principio. Usa barandillas, asiento alto en el baño y apoyos estables. Las comparaciones "pierna operada vs. sana" no sirven: tu fisio usará valores de referencia (por ejemplo, fuerza relativa a tu peso).'
+      title: 'Dos cirugías, dos ritmos',
+      text: 'Cada rodilla tiene su propia fase. Los ejercicios con una sola pierna siguen el ritmo de esa rodilla. Lo que hace trabajar a las dos a la vez (caminar, bici, sentadillas, correr, saltar) va al ritmo de la operada más tarde. Y volver al deporte depende de que las dos estén listas.'
+    },
+    {
+      title: 'No sobrecargues la rodilla más avanzada',
+      text: 'Es normal proteger la rodilla recién operada cargando el peso en la otra, pero si cojeas o te apoyas siempre en la misma, la rodilla "buena" puede inflamarse o doler. Reparte el peso, usa las muletas el tiempo indicado y vigila también la hinchazón de la rodilla más avanzada.'
+    },
+    {
+      title: 'Comparar las rodillas',
+      text: 'Las comparaciones "pierna operada vs. sana" no sirven igual porque las dos están operadas. En Progreso puedes comparar cada rodilla en el mismo día de su recuperación (por ejemplo, el día 30 de cada una). Para la fuerza y los saltos, tu fisio usará valores de referencia.'
     },
     {
       title: 'Medicación y ejercicio',

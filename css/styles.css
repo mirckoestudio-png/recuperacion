@@ -410,10 +410,19 @@ legend small { color: var(--text-2); font-weight: 500; }
 .phase-title { flex: 1; display: flex; flex-direction: column; }
 .phase-title small { color: var(--text-2); }
 .phase-title em { color: var(--accent); font-style: normal; font-weight: 600; }
-.checklist { list-style: none; margin: 0; padding: 0; }
-.checklist label { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; font-size: .94rem; }
-.checklist input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--accent); flex: none; }
-.checklist input:checked + span { color: var(--text-2); text-decoration: line-through; }
+.criteria { list-style: none; margin: 0; padding: 0; }
+.criteria li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .93rem; }
+.criteria li:last-child { border-bottom: 0; }
+.kchips { display: flex; gap: 6px; flex: none; }
+.kchip { position: relative; cursor: pointer; }
+.kchip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.kchip span {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 48px; min-height: 36px;
+  border-radius: 10px; border: 1.5px solid var(--knee); color: var(--text); font-weight: 600; font-size: .82rem; padding: 0 8px;
+}
+.kchip input:checked + span { background: var(--knee); color: #fff; }
+.kchip input:checked + span::before { content: "✓ "; }
+.kchip input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
 .ex-names { margin: 0; padding-left: 20px; }
 .ex-names li { margin: 0 0 6px; font-size: .94rem; }
 .lock { display: flex; align-items: center; gap: 4px; color: var(--text-2); font-size: .82rem; }
@@ -496,6 +505,80 @@ legend small { color: var(--text-2); font-weight: 500; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-@media (min-width: 480px) {
-  .stats { grid-template-columns: repeat(4, 1fr); }
+
+/* ───────────── Identidad de cada rodilla ───────────── */
+.k-der { --knee: var(--series-1); }
+.k-izq { --knee: var(--series-2); }
+.kdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--knee); flex: none; }
+
+.knee-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.knee-card {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--knee);
+  border-radius: 14px; padding: 10px 12px; color: inherit; text-decoration: none; box-shadow: var(--shadow);
 }
+.kc-top { display: flex; align-items: center; gap: 6px; font-size: .9rem; flex-wrap: wrap; }
+.kc-top small { color: var(--text-2); width: 100%; font-size: .78rem; }
+.kc-day { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
+.kc-day small { font-size: .78rem; font-weight: 500; color: var(--text-2); }
+.kc-phase { font-size: .8rem; font-weight: 600; color: var(--accent-strong); }
+.cap::first-letter { text-transform: uppercase; }
+.how-to { margin-top: 18px; }
+
+.knee-section h2 small { color: var(--text-2); font-weight: 500; font-size: .85rem; }
+.knee-section .kdot { width: 12px; height: 12px; }
+.knee-section .ex { border-left: 3px solid var(--knee); }
+.waiting summary { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: .95rem; }
+.waiting summary span { flex: 1; }
+.waiting summary small { color: var(--text-2); font-weight: 500; }
+.waiting summary > .icon:first-child { color: var(--text-2); }
+.waiting .section-sub { margin-top: 10px; }
+.waiting .plain-list { margin: 0; }
+.waiting .plain-list li { font-size: .92rem; }
+.waiting .plain-list small { color: var(--text-2); }
+
+.knee-log legend .kdot, .knee-form legend .kdot { width: 12px; height: 12px; }
+.knee-log, .knee-form { border-left: 4px solid var(--knee); }
+.knee-log, .knee-form { padding-top: 14px; }
+.knee-log legend, .knee-form legend { float: left; width: 100%; margin: 0 0 6px; padding: 0; flex-wrap: wrap; row-gap: 0; }
+.knee-log legend + *, .knee-form legend + * { clear: both; }
+.knee-log legend small, .knee-form legend small { flex-basis: 100%; padding-left: 20px; font-size: .8rem; }
+.knee-form legend small:empty { display: none; }
+.h-sum span { display: inline-flex; align-items: center; gap: 5px; }
+.h-sum .kdot { width: 8px; height: 8px; }
+.gap-info { font-weight: 600; color: var(--accent-strong); margin: -2px 4px 12px; min-height: 1.2em; }
+
+.knee-info { padding-left: 10px; border-left: 3px solid var(--knee); }
+.knee-info b { display: flex; align-items: center; gap: 6px; }
+.field.k-der .field-label, .field.k-izq .field-label { display: flex; align-items: center; gap: 6px; }
+
+.kbadges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.kbadge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: .75rem; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--knee) 16%, var(--surface)); color: var(--text);
+}
+.kbadge .kdot { width: 8px; height: 8px; }
+
+/* Progreso */
+.knee-stat { border-top: 4px solid var(--knee); }
+.knee-stat > small:first-child { display: flex; align-items: center; gap: 6px; }
+.stat-lines { display: flex; flex-direction: column; margin-top: 6px; font-size: .82rem; color: var(--text-2); }
+.stat-lines b { color: var(--text); font-size: .95rem; line-height: 1.3; }
+.stat-lines span { display: flex; justify-content: space-between; gap: 6px; }
+.compare { display: flex; gap: 12px; align-items: flex-start; }
+.compare > .icon { color: var(--accent); width: 24px; height: 24px; margin-top: 2px; }
+.compare p { margin: 4px 0 0; font-size: .93rem; color: var(--text-2); }
+.compare p b { color: var(--text); }
+.segmented {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 0 12px;
+  background: var(--surface-2); border-radius: 12px;
+}
+.segmented button {
+  min-height: 40px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2);
+  font: 600 .86rem var(--font); cursor: pointer; padding: 6px 8px;
+}
+.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.chart .reference { fill: none; stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .75; }
+.sw-dash { display: inline-block; width: 16px; height: 0; border-top: 2px dashed var(--text-2); }
+
+.t-side { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; margin: 0 0 4px; }

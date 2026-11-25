@@ -1,6 +1,11 @@
 /*
- * Lógica del plan: en qué fase estás, qué ejercicios tocan hoy,
- * qué precauciones aplican y avisos a partir de tus registros.
+ * Lógica del plan con dos cirugías independientes (una por rodilla).
+ *
+ *  - Cada rodilla tiene su fecha, su fase y sus precauciones.
+ *  - Ejercicios con una sola pierna (legs: 'one'): siguen la fase de cada rodilla.
+ *  - Ejercicios con las dos piernas (legs: 'both'): solo aparecen cuando las DOS
+ *    rodillas lo permiten, así que van al ritmo de la operada más tarde.
+ *  - Cuidados generales (legs: 'any'): aparecen si alguna rodilla los necesita.
  */
 (function (root) {
   'use strict';
@@ -17,7 +22,7 @@
   var HAMSTRING_LIMIT_DAY = 84;  // ~12 semanas de cuidado con el injerto de isquios
 
   function phaseForDay(day) {
-    var id = 1;
+    var id = 0;
     P.PHASES.forEach(function (ph) { if (day >= ph.startDay) id = ph.id; });
     return id;
   }
@@ -29,117 +34,200 @@
 
   function weekOf(day) { return Math.floor(day / 7) + 1; }
 
-  /** Contexto de recuperación para una fecha (por defecto, hoy). */
-  function context(state, refKey) {
-    refKey = refKey || D.todayKey();
-    var profile = state.profile;
-    var knees = SIDES.map(function (s) {
-      var k = profile.knees[s.key];
-      var day = D.diffDays(k.date, refKey);
-      return {
-        side: s.key, label: s.label, short: s.short,
-        date: k.date, meniscus: k.meniscus, graft: k.graft,
-        day: day, week: weekOf(day), phaseAuto: phaseForDay(day)
-      };
-    });
-
-    // El plan sigue a la rodilla operada más recientemente (la más conservadora).
-    var ref = knees[0].day <= knees[1].day ? knees[0] : knees[1];
-    var refDay = ref.day;
-    var auto = phaseForDay(Math.max(0, refDay));
-    var phase = state.phaseOverride ? state.phaseOverride : auto;
-
-    function any(fn) { return knees.some(fn); }
-
+  function kneeContext(state, side, refKey) {
+    var k = state.profile.knees[side.key];
+    var day = D.diffDays(k.date, refKey);
+    var auto = phaseForDay(day);
+    var ov = state.phaseOverride && state.phaseOverride[side.key];
+    var manual = !!ov && day >= 0;
+    var phase = manual ? ov : auto;
     return {
-      refKey: refKey,
-      knees: knees,
-      refKnee: ref,
-      sameDate: knees[0].date === knees[1].date,
-      day: refDay,
-      week: weekOf(refDay),
-      presurgery: refDay < 0,
-      phase: phase,
+      side: side.key,
+      label: side.label,
+      short: side.short,
+      name: 'rodilla ' + side.label.toLowerCase(),
+      date: k.date,
+      meniscus: k.meniscus,
+      graft: k.graft,
+      day: day,
+      week: weekOf(day),
+      presurgery: day < 0,
       phaseAuto: auto,
-      manual: !!state.phaseOverride,
+      phase: phase,
+      manual: manual,
       phaseObj: phaseById(phase),
       // Si no sabes el tipo, se asume lo más prudente.
-      anyRepair: any(function (k) { return k.meniscus === 'sutura' || k.meniscus === 'nose'; }),
-      anyHamstring: any(function (k) { return k.graft === 'isquios' || k.graft === 'nose'; }),
-      anyBTB: any(function (k) { return k.graft === 'htth'; })
+      repair: k.meniscus === 'sutura' || k.meniscus === 'nose',
+      hamstring: k.graft === 'isquios' || k.graft === 'nose',
+      btb: k.graft === 'htth',
+      order: 0
     };
   }
 
-  /** Día mínimo desde la cirugía para poder hacer el ejercicio, y por qué. */
-  function gateFor(ex, ctx) {
+  /** Contexto de recuperación de las dos rodillas para una fecha (por defecto, hoy). */
+  function context(state, refKey) {
+    refKey = refKey || D.todayKey();
+    var knees = SIDES.map(function (s) { return kneeContext(state, s, refKey); });
+    var sameDate = knees[0].date === knees[1].date;
+    var ordered = knees.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    if (!sameDate) { ordered[0].order = 1; ordered[1].order = 2; }
+    return {
+      refKey: refKey,
+      knees: knees,
+      bySide: { der: knees[0], izq: knees[1] },
+      ordered: ordered,        // primero la operada antes
+      first: ordered[0],
+      recent: ordered[1],      // la operada más tarde: marca el ritmo de lo que usa las dos piernas
+      sameDate: sameDate,
+      samePhase: knees[0].phase === knees[1].phase,
+      anyPostop: knees.some(function (k) { return !k.presurgery; })
+    };
+  }
+
+  /** Día mínimo desde la cirugía de esa rodilla para poder hacer el ejercicio, y por qué. */
+  function gateFor(ex, k) {
     var g = ex.gate || {};
     var min = g.minDay || 0;
     var reason = '';
-    if (ctx.anyRepair && g.repairMinDay && g.repairMinDay > min) {
-      min = g.repairMinDay; reason = 'por la sutura de menisco';
+    if (k.repair && g.repairMinDay && g.repairMinDay > min) {
+      min = g.repairMinDay; reason = 'sutura de menisco';
     }
-    if (ctx.anyHamstring && g.hamstringMinDay && g.hamstringMinDay > min) {
-      min = g.hamstringMinDay; reason = 'por el injerto de isquiotibiales';
+    if (k.hamstring && g.hamstringMinDay && g.hamstringMinDay > min) {
+      min = g.hamstringMinDay; reason = 'injerto de isquiotibiales';
     }
     return { minDay: min, reason: reason };
   }
 
-  function notesFor(ex, ctx) {
+  function firstPostopPhase(ex) {
+    var ps = ex.phases.filter(function (p) { return p > 0; });
+    return ps.length ? Math.min.apply(null, ps) : 99;
+  }
+
+  /** ¿Esta rodilla tolera el ejercicio hoy? (ya llegó a la fase en que se introduce y pasó los plazos) */
+  function kneeAllows(ex, k) {
+    if (k.presurgery) return ex.phases.indexOf(0) !== -1;
+    return k.phase >= firstPostopPhase(ex) && k.day >= gateFor(ex, k).minDay;
+  }
+
+  /** Fecha aproximada (por tiempo) en que la rodilla k permitirá el ejercicio. */
+  function unlockKey(ex, k) {
+    var from = firstPostopPhase(ex);
+    if (from === 99) return null;
+    var day = Math.max(phaseById(from).startDay, gateFor(ex, k).minDay);
+    return D.addDays(k.date, day);
+  }
+
+  function notesFor(ex, k) {
     var out = [];
     var n = ex.notes || {};
-    if (n.repair && ctx.anyRepair && ctx.day < REPAIR_LIMIT_DAY) out.push(n.repair);
-    if (n.hamstring && ctx.anyHamstring && ctx.day < HAMSTRING_LIMIT_DAY) out.push(n.hamstring);
-    if (n.btb && ctx.anyBTB) out.push(n.btb);
+    if (k.presurgery) return out;
+    if (n.repair && k.repair && k.day < REPAIR_LIMIT_DAY) out.push(n.repair);
+    if (n.hamstring && k.hamstring && k.day < HAMSTRING_LIMIT_DAY) out.push(n.hamstring);
+    if (n.btb && k.btb) out.push(n.btb);
     return out;
   }
 
-  function exerciseStatus(ex, ctx, state) {
-    var gate = gateFor(ex, ctx);
-    // Antes de la cirugía se muestran los ejercicios de la fase 1 para practicarlos.
-    var locked = Math.max(0, ctx.day) < gate.minDay;
-    return {
-      ex: ex,
-      inPhase: ex.phases.indexOf(ctx.phase) !== -1,
-      locked: locked,
-      lockText: locked
-        ? 'Disponible a partir de las ' + Math.round(gate.minDay / 7) + ' semanas' + (gate.reason ? ' ' + gate.reason : '')
-        : '',
-      hidden: !!(state.hidden && state.hidden[ex.id]),
-      notes: notesFor(ex, ctx)
-    };
+  function bothNotes(ex, ctx) {
+    var out = [];
+    ctx.ordered.forEach(function (k) {
+      notesFor(ex, k).forEach(function (t) { out.push({ side: k.side, text: t }); });
+    });
+    // Si la misma nota aplica a las dos rodillas, se muestra una vez sin etiqueta.
+    var merged = [];
+    out.forEach(function (n) {
+      var twin = merged.find(function (m) { return m.text === n.text; });
+      if (twin) twin.side = null; else merged.push({ side: n.side, text: n.text });
+    });
+    return merged;
   }
 
-  /** Lista de ejercicios del día. */
+  /** Plan del día. */
   function daily(state, refKey) {
     var ctx = context(state, refKey);
     var doneDay = (state.done && state.done[ctx.refKey]) || {};
-    var items = [];
-    P.EXERCISES.forEach(function (ex) {
-      var st = exerciseStatus(ex, ctx, state);
-      if (!st.inPhase || st.locked || st.hidden) return;
-      st.count = doneDay[ex.id] || 0;
-      st.perDay = ex.perDay || 1;
-      st.optional = !!ex.optional;
-      items.push(st);
-    });
-    var custom = (state.custom || []).map(function (c) {
+    var hidden = state.hidden || {};
+    var both = [];
+    var perKnee = { der: [], izq: [] };
+    var waiting = { der: [], izq: [] };
+
+    function item(ex, key, k, notes) {
       return {
-        ex: c, custom: true, notes: [],
-        count: doneDay[c.id] || 0,
-        perDay: c.perDay || 1,
-        optional: false
+        ex: ex, key: key, side: k ? k.side : null,
+        count: doneDay[key] || 0,
+        perDay: ex.perDay || 1,
+        optional: !!ex.optional,
+        custom: false,
+        notes: notes
       };
+    }
+
+    P.EXERCISES.forEach(function (ex) {
+      if (hidden[ex.id]) return;
+      if (ex.legs === 'one') {
+        ctx.knees.forEach(function (k) {
+          if (ex.phases.indexOf(k.phase) === -1) return;
+          if (!k.presurgery && k.day < gateFor(ex, k).minDay) return;
+          perKnee[k.side].push(item(ex, ex.id + '@' + k.side, k,
+            notesFor(ex, k).map(function (t) { return { side: null, text: t }; })));
+        });
+      } else if (ex.legs === 'any') {
+        var need = ctx.knees.some(function (k) { return ex.phases.indexOf(k.phase) !== -1; });
+        if (need) both.push(item(ex, ex.id, null, bothNotes(ex, ctx)));
+      } else {
+        var current = ctx.knees.some(function (k) { return ex.phases.indexOf(k.phase) !== -1; });
+        if (!current) return;
+        var allowed = ctx.knees.every(function (k) { return kneeAllows(ex, k); });
+        if (allowed) {
+          both.push(item(ex, ex.id, null, bothNotes(ex, ctx)));
+        } else {
+          // Le toca a una rodilla por su fase, pero la otra todavía no lo tolera.
+          ctx.knees.forEach(function (k) {
+            if (ex.phases.indexOf(k.phase) === -1 || !kneeAllows(ex, k)) return;
+            var blocker = ctx.knees.find(function (o) { return o !== k && !kneeAllows(ex, o); });
+            if (blocker) waiting[k.side].push({ ex: ex, blocker: blocker, unlockKey: unlockKey(ex, blocker) });
+          });
+        }
+      }
     });
-    return { ctx: ctx, items: items, custom: custom };
+
+    (state.custom || []).forEach(function (c) {
+      var it = {
+        ex: c, key: c.id, side: c.knee === 'der' || c.knee === 'izq' ? c.knee : null,
+        count: doneDay[c.id] || 0, perDay: c.perDay || 1, optional: false, custom: true, notes: []
+      };
+      if (it.side) perKnee[it.side].push(it); else both.push(it);
+    });
+
+    return {
+      ctx: ctx,
+      both: both,
+      knees: ctx.ordered.map(function (k) {
+        return { knee: k, items: perKnee[k.side], waiting: waiting[k.side] };
+      })
+    };
+  }
+
+  function allItems(d) {
+    var out = d.both.slice();
+    d.knees.forEach(function (s) { out = out.concat(s.items); });
+    return out;
+  }
+
+  /** Primer día con datos en la app: antes de eso no se calcula la constancia. */
+  function trackingStart(state) {
+    var keys = Object.keys(state.done || {}).concat(Object.keys(state.logs || {}));
+    if (state.profile && state.profile.createdAt) keys.push(state.profile.createdAt);
+    if (!keys.length) return D.todayKey();
+    return keys.sort()[0];
   }
 
   /** % del plan completado en una fecha (sin contar opcionales). */
-  function adherence(state, dateKey) {
+  function adherence(state, dateKey, startKey) {
     if (!state.profile) return null;
+    if (dateKey < (startKey || trackingStart(state))) return null;
     var d = daily(state, dateKey);
-    if (d.ctx.presurgery) return null;
     var total = 0, done = 0;
-    d.items.concat(d.custom).forEach(function (it) {
+    allItems(d).forEach(function (it) {
       if (it.optional) return;
       total += it.perDay;
       done += Math.min(it.count, it.perDay);
@@ -150,14 +238,14 @@
 
   /** Días seguidos (hasta hoy) completando al menos la mitad del plan. */
   function streak(state) {
-    var today = D.todayKey();
+    var start = trackingStart(state);
+    var k = D.todayKey();
     var n = 0;
-    var k = today;
-    var a = adherence(state, k);
+    var a = adherence(state, k, start);
     // Si hoy aún no llegas a la mitad, la racha cuenta desde ayer.
     if (!a || a.pct < 0.5) k = D.addDays(k, -1);
     for (var i = 0; i < 400; i++) {
-      a = adherence(state, k);
+      a = adherence(state, k, start);
       if (!a || a.pct < 0.5) break;
       n++;
       k = D.addDays(k, -1);
@@ -165,38 +253,46 @@
     return n;
   }
 
+  /** Precauciones vigentes: por rodilla (side) y generales (side: null). */
   function precautions(ctx) {
     var out = [];
-    if (ctx.anyRepair && ctx.day < 42) {
-      out.push({ level: 'warn', text: 'Sutura de menisco: no dobles la rodilla más de 90° (salvo que tu cirujano indique otro límite). Carga de peso y rodillera según su pauta; a menudo se camina con la rodillera bloqueada en extensión.' });
-    }
-    if (ctx.anyRepair && ctx.day < REPAIR_LIMIT_DAY) {
-      out.push({ level: 'warn', text: 'Sutura de menisco: nada de cuclillas, sentadillas profundas con peso ni giros sobre la pierna hasta los 4 meses.' });
-    }
-    if (ctx.anyHamstring && ctx.day < 70) {
-      out.push({ level: 'info', text: 'Injerto de isquiotibiales: sin curl de isquios con peso ni estiramientos fuertes de la parte de atrás del muslo hasta unas 10 semanas.' });
-    }
-    if (ctx.anyBTB) {
-      out.push({ level: 'info', text: 'Injerto de tendón rotuliano: es normal que moleste arrodillarse. Evita apoyar las rodillas en superficies duras las primeras semanas.' });
-    }
-    if (ctx.phase <= 2) {
-      out.push({ level: 'info', text: 'Nunca pongas un cojín bajo la rodilla: para elevar la pierna, apóyala desde el talón.' });
-    }
-    if (ctx.phase >= 3 && ctx.day < 84) {
-      out.push({ level: 'info', text: 'Extensión de rodilla sentado/a con peso: solo entre 90° y 45° hasta la semana 12.' });
-    }
-    if (ctx.phase <= 4) {
-      out.push({ level: 'info', text: 'Todavía nada de giros, pivotes, saltos bruscos ni deportes de contacto.' });
-    }
-    out.push({ level: 'info', text: 'Cirugía en las dos rodillas: ve con calma en escaleras y al levantarte; usa barandilla y apoyos estables.' });
-    return out;
-  }
+    ctx.ordered.forEach(function (k) {
+      var add = function (level, text) { out.push({ level: level, side: k.side, text: text }); };
+      if (k.presurgery) {
+        add('info', 'Todavía sin operar: evita giros, saltos y deportes. Trabaja la extensión completa y la fuerza para llegar en buena forma a la cirugía.');
+        return;
+      }
+      if (k.repair && k.day < 42) {
+        add('warn', 'Sutura de menisco: no la dobles más de 90° (salvo que tu cirujano indique otro límite). Carga de peso y rodillera según su pauta.');
+      }
+      if (k.repair && k.day < REPAIR_LIMIT_DAY) {
+        add('warn', 'Sutura de menisco: nada de cuclillas, sentadillas profundas con peso ni giros hasta los 4 meses (' + D.format(D.addDays(k.date, REPAIR_LIMIT_DAY), { day: 'numeric', month: 'long' }) + ').');
+      }
+      if (k.hamstring && k.day < 70) {
+        add('info', 'Injerto de isquiotibiales: sin curl de isquios con peso ni estiramientos fuertes de la parte de atrás del muslo hasta unas 10 semanas.');
+      }
+      if (k.btb) {
+        add('info', 'Injerto de tendón rotuliano: es normal que moleste arrodillarse. Evita apoyar la rodilla en superficies duras las primeras semanas.');
+      }
+      if (k.phase >= 3 && k.day < 84) {
+        add('info', 'Extensión de rodilla sentado/a con peso: solo entre 90° y 45° hasta la semana 12.');
+      }
+    });
 
-  function latestLogs(state, refKey, n) {
-    var keys = Object.keys(state.logs || {})
-      .filter(function (k) { return k <= refKey; })
-      .sort();
-    return keys.slice(-n).map(function (k) { return { date: k, log: state.logs[k] }; });
+    var gen = function (level, text) { out.push({ level: level, side: null, text: text }); };
+    if (ctx.knees.some(function (k) { return !k.presurgery && k.phase <= 2; })) {
+      gen('info', 'Nunca pongas un cojín bajo la rodilla: para elevar la pierna, apóyala desde el talón.');
+    }
+    if (!ctx.sameDate && !ctx.samePhase) {
+      gen('info', 'Caminar, bici, sentadillas, correr y saltar usan las dos piernas: van al ritmo de la ' + ctx.recent.name + ', la operada más tarde.');
+    }
+    if (!ctx.sameDate && ctx.anyPostop) {
+      gen('info', 'No sobrecargues la ' + ctx.first.name + ' para compensar la otra: reparte el peso y vigila que no se hinche.');
+    }
+    if (ctx.knees.some(function (k) { return k.phase <= 4; })) {
+      gen('info', 'Nada de giros, pivotes, saltos bruscos ni deportes de contacto hasta que las dos rodillas estén listas.');
+    }
+    return out;
   }
 
   function num(v) { return typeof v === 'number' && !isNaN(v); }
@@ -204,29 +300,56 @@
   /** Avisos automáticos a partir de los últimos registros. */
   function alerts(state, ctx) {
     var out = [];
-    var recent = latestLogs(state, ctx.refKey, 2);
-    if (!recent.length) return out;
-    var last = recent[recent.length - 1];
-    var age = D.diffDays(last.date, ctx.refKey);
-    if (age > 2) return out;
-    var prev = recent.length > 1 ? recent[0].log : null;
+    var keys = Object.keys(state.logs || {}).filter(function (k) { return k <= ctx.refKey; }).sort();
+    if (!keys.length) return out;
+    var lastKey = keys[keys.length - 1];
+    if (D.diffDays(lastKey, ctx.refKey) > 2) return out;
+    var last = state.logs[lastKey];
+    var prev = keys.length > 1 ? state.logs[keys[keys.length - 2]] : null;
 
-    SIDES.forEach(function (s) {
-      var k = last.log[s.key] || {};
-      var name = 'rodilla ' + s.label.toLowerCase();
+    ctx.ordered.forEach(function (kc) {
+      var k = last[kc.side] || {};
+      var name = kc.name;
       if ((num(k.pain) && k.pain >= 7) || (num(k.swelling) && k.swelling >= 3)) {
-        out.push({ level: 'warn', text: 'Dolor o hinchazón altos en la ' + name + '. Hoy baja la carga: prioriza hielo, elevación, extensión pasiva y contracciones de cuádriceps. Si no mejora o empeora, contacta con tu equipo médico.' });
-      } else if (prev && prev[s.key] && num(k.swelling) && num(prev[s.key].swelling) && k.swelling > prev[s.key].swelling) {
-        out.push({ level: 'info', text: 'La hinchazón de la ' + name + ' ha aumentado respecto al registro anterior. Puede que te hayas pasado: reduce la intensidad hoy.' });
+        out.push({ level: 'warn', side: kc.side, text: 'Dolor o hinchazón altos en la ' + name + '. Hoy baja la carga de esa pierna: prioriza hielo, elevación, extensión pasiva y contracciones de cuádriceps. Si no mejora o empeora, contacta con tu equipo médico.' });
+      } else if (prev && prev[kc.side] && num(k.swelling) && num(prev[kc.side].swelling) && k.swelling > prev[kc.side].swelling) {
+        out.push({ level: 'info', side: kc.side, text: 'La hinchazón de la ' + name + ' ha aumentado respecto al registro anterior. Puede que te hayas pasado: reduce la intensidad hoy.' });
       }
-      if (num(k.ext) && k.ext > 5 && ctx.day >= 14) {
-        out.push({ level: 'warn', text: 'A la ' + name + ' le faltan ' + k.ext + '° para estar recta. Recuperar la extensión es la prioridad: haz la extensión pasiva varias veces al día y coméntalo con tu fisio.' });
+      if (!kc.presurgery && num(k.ext) && k.ext > 5 && kc.day >= 14) {
+        out.push({ level: 'warn', side: kc.side, text: 'A la ' + name + ' le faltan ' + k.ext + '° para estar recta. Recuperar la extensión es la prioridad: haz la extensión pasiva varias veces al día y coméntalo con tu fisio.' });
       }
-      if (num(k.flex) && ctx.phase >= 2 && ctx.day >= 28 && k.flex < 90) {
-        out.push({ level: 'info', text: 'La flexión de la ' + name + ' (' + k.flex + '°) va por debajo de lo habitual para esta fase. Coméntalo con tu fisio.' });
+      if (!kc.presurgery && num(k.flex) && kc.phase >= 2 && kc.day >= 28 && k.flex < 90) {
+        out.push({ level: 'info', side: kc.side, text: 'La flexión de la ' + name + ' (' + k.flex + '°) va por debajo de lo habitual para su fase. Coméntalo con tu fisio.' });
       }
     });
     return out;
+  }
+
+  /**
+   * Compara las dos rodillas en el mismo día de su recuperación:
+   * el último registro de la operada más tarde contra la otra en ese mismo día (±4).
+   */
+  function comparison(state, ctx, field) {
+    if (ctx.sameDate) return null;
+    var first = ctx.first, recent = ctx.recent;
+    var logs = state.logs || {};
+    var keys = Object.keys(logs).sort();
+    var lastRecent = null;
+    keys.forEach(function (k) {
+      var v = logs[k][recent.side];
+      if (v && num(v[field]) && D.diffDays(recent.date, k) >= 0) lastRecent = { key: k, value: v[field], day: D.diffDays(recent.date, k) };
+    });
+    if (!lastRecent) return null;
+    var best = null;
+    keys.forEach(function (k) {
+      var v = logs[k][first.side];
+      if (!v || !num(v[field])) return;
+      var day = D.diffDays(first.date, k);
+      var dist = Math.abs(day - lastRecent.day);
+      if (dist <= 4 && (!best || dist < best.dist)) best = { value: v[field], day: day, dist: dist };
+    });
+    if (!best) return null;
+    return { day: lastRecent.day, recent: recent, first: first, recentValue: lastRecent.value, firstValue: best.value, firstDay: best.day };
   }
 
   root.Plan = {
@@ -235,11 +358,17 @@
     phaseById: phaseById,
     weekOf: weekOf,
     context: context,
-    exerciseStatus: exerciseStatus,
+    gateFor: gateFor,
+    kneeAllows: kneeAllows,
+    firstPostopPhase: firstPostopPhase,
+    unlockKey: unlockKey,
     daily: daily,
+    allItems: allItems,
     adherence: adherence,
+    trackingStart: trackingStart,
     streak: streak,
     precautions: precautions,
-    alerts: alerts
+    alerts: alerts,
+    comparison: comparison
   };
 })(typeof window !== 'undefined' ? window : globalThis);

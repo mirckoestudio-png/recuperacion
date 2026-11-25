@@ -1,6 +1,6 @@
 # Rodillas 🦵
 
-App para acompañar la recuperación tras una **reconstrucción de LCA con cirugía de menisco en las dos rodillas**.
+App para acompañar la recuperación tras una **reconstrucción de LCA con cirugía de menisco en las dos rodillas, operadas en fechas distintas** (por ejemplo, con 3 meses de diferencia). Cada rodilla tiene su propia cirugía, fase, ejercicios, precauciones y progreso.
 
 Es una app web instalable en el móvil (PWA): funciona sin conexión, no necesita cuenta ni servidor y **tus datos se quedan en tu teléfono**.
 
@@ -8,19 +8,24 @@ Es una app web instalable en el móvil (PWA): funciona sin conexión, no necesit
 
 ## Qué hace
 
-- **Hoy**: día y semana desde la cirugía, fase actual y la lista de ejercicios del día. Toca el círculo de cada ejercicio cada vez que hagas una sesión; toca el nombre para ver cómo se hace, por qué y los avisos según tu cirugía.
+- **Hoy**: una tarjeta por rodilla (1.ª y 2.ª cirugía, día, semana y fase) y los ejercicios del día en tres bloques:
+  - **Con las dos piernas** (caminar, bici, sentadillas, correr, saltar): van al ritmo de la rodilla operada más tarde.
+  - **Rodilla izquierda** y **Rodilla derecha**: ejercicios con una sola pierna, según la fase de cada una.
+  - **Esperando a la otra rodilla**: lo que le tocaría a la rodilla más avanzada pero usa las dos piernas, con la fecha aproximada en que se desbloquea.
+
+  Toca el círculo de cada ejercicio cada vez que hagas una sesión; toca el nombre para ver cómo se hace, por qué y los avisos según la cirugía de esa rodilla.
 - **Temporizador guiado**: para los isométricos, la extensión pasiva, el equilibrio, la bici, etc., con pitidos y vibración (repeticiones, tiempo de aguante y descanso).
 - **Registro diario** de cada rodilla: dolor (0–10), hinchazón, flexión y extensión, más notas. Se guarda solo.
 - **Avisos automáticos**: si registras mucho dolor o hinchazón, si a una rodilla le falta extensión, etc.
-- **Progreso**: gráficos de flexión, extensión y dolor de cada rodilla, racha y calendario de constancia.
-- **Plan por fases** (5 fases, de la protección al retorno al deporte) con objetivos, **criterios para avanzar** que puedes ir marcando, y **señales de alarma** (trombosis, infección…).
+- **Progreso**: fase y mejores valores de cada rodilla; gráficos de flexión, extensión y dolor **por día de recuperación** (para comparar el día 30 de una con el día 30 de la otra, con la evolución habitual como referencia) o por fecha; racha y calendario de constancia.
+- **Plan por fases** (de la protección al retorno al deporte, más una fase de preparación si una rodilla aún no está operada) con objetivos, **criterios para avanzar marcados por rodilla**, y **señales de alarma** (trombosis, infección…).
 - **Se adapta a tu cirugía**:
   - *Sutura de menisco*: límite de 90° las primeras semanas, sin bici hasta las 6 semanas, sin sentadillas profundas, zancadas ni sentadilla búlgara hasta los 4 meses.
   - *Injerto de isquiotibiales*: sin peso muerto hasta las 8 semanas ni curl de isquios hasta las 10.
   - *Injerto rotuliano*: avisos al arrodillarse.
-  - Si operaron cada rodilla en una fecha distinta, el plan sigue a la operada más recientemente.
+  - Cada precaución indica a qué rodilla se aplica.
   - Si no sabes el tipo, la app aplica lo más prudente.
-- **Personalizable**: fija la fase que te diga tu fisio, oculta ejercicios que no te tocan y añade los que te mande.
+- **Personalizable**: fija la fase de cada rodilla que te diga tu fisio, oculta ejercicios que no te tocan y añade los que te mande (para las dos piernas o solo una).
 - **Copia de seguridad**: exporta/importa tus datos en un archivo.
 
 ## Cómo usarla en el móvil
@@ -77,6 +82,6 @@ tests/plan.test.js    Pruebas de la lógica (node tests/plan.test.js)
 
 ### Cambiar ejercicios o fases
 
-Todo el contenido está en `js/data.js`. Cada ejercicio indica en qué fases aparece (`phases`), cuántas veces al día (`perDay`), la dosis, los pasos y, si hace falta, un temporizador (`timer`) o una fecha mínima según tu cirugía (`gate`).
+Todo el contenido está en `js/data.js`. Cada ejercicio indica si se hace con una pierna o con las dos (`legs`), en qué fases aparece (`phases`, 0 = antes de operarse), cuántas veces al día (`perDay`), la dosis, los pasos y, si hace falta, un temporizador (`timer`) o una fecha mínima según la cirugía de cada rodilla (`gate`).
 
 Si publicas una versión nueva, cambia `CACHE` en `sw.js` (por ejemplo `rodillas-v2`) para que los móviles descarguen los archivos nuevos.

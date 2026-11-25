@@ -16,7 +16,7 @@
   const modalRoot = document.getElementById('modal-root');
   const toastEl = document.getElementById('toast');
 
-  const VERSION = '1.0.0';
+  const VERSION = '2.0.0';
 
   // Estado de la interfaz (no se guarda)
   const ui = { expanded: {}, logDate: null, lastRoute: null };
@@ -108,9 +108,11 @@
     if (route.name === 'progreso') drawProgressCharts();
   }
 
+  const sideName = (side) => (side === 'der' ? 'Rodilla derecha' : 'Rodilla izquierda');
+
   function alertCard(a) {
     const icon = a.level === 'warn' ? I.alert : I.info;
-    return `<div class="callout ${a.level}">${icon}<p>${esc(a.text)}</p></div>`;
+    return `<div class="callout ${a.level}">${icon}<p>${a.side ? `<b>${esc(sideName(a.side))}:</b> ` : ''}${esc(a.text)}</p></div>`;
   }
 
   // ─────────────────────────── HOY ───────────────────────────
@@ -126,42 +128,80 @@
     </div>`;
   }
 
+  const ordinal = (k) => (k.order ? `${k.order}.ª cirugía` : 'Cirugía');
+
+  function kneeCard(k) {
+    const status = k.presurgery
+      ? `Faltan ${-k.day} ${-k.day === 1 ? 'día' : 'días'}`
+      : `Día ${k.day}`;
+    const sub = k.presurgery
+      ? esc(D.format(k.date, { day: 'numeric', month: 'short' }))
+      : `semana ${k.week}`;
+    return `<a class="knee-card k-${k.side}" href="#plan">
+      <span class="kc-top"><i class="kdot"></i><b>${k.label}</b><small>${ordinal(k)}</small></span>
+      <span class="kc-day">${status} <small>· ${sub}</small></span>
+      <span class="kc-phase">Fase ${k.phase} · ${esc(k.phaseObj.short)}${k.manual ? ' (fijada)' : ''}</span>
+    </a>`;
+  }
+
   function exerciseRow(it) {
     const ex = it.ex;
-    const id = ex.id;
+    const key = it.key;
     const full = it.count >= it.perDay;
-    const open = !!ui.expanded[id];
+    const open = !!ui.expanded[key];
     const p = Math.min(1, it.count / it.perDay);
     const counter = full
       ? I.check
       : it.perDay > 1 ? `<span>${it.count}/${it.perDay}</span>` : '';
+    const who = it.side ? ` (${sideName(it.side)})` : '';
     const label = full
-      ? `${ex.name}: completado. Toca para desmarcar`
-      : `${ex.name}: ${it.count} de ${it.perDay} hechas. Toca para sumar una`;
+      ? `${ex.name}${who}: completado. Toca para desmarcar`
+      : `${ex.name}${who}: ${it.count} de ${it.perDay} hechas. Toca para sumar una`;
 
     let detail = '';
     if (it.custom) {
-      detail = (ex.notes ? `<p>${esc(ex.notes)}</p>` : '<p class="muted">Ejercicio añadido por ti. Puedes editarlo o borrarlo en Ajustes.</p>');
+      detail = (ex.notes ? `<p>${esc(ex.notes)}</p>` : '<p class="muted">Ejercicio añadido por ti. Puedes borrarlo en Ajustes.</p>');
     } else {
       detail = `
         <p class="why">${esc(ex.why)}</p>
         <ol class="steps">${ex.how.map((h) => `<li>${esc(h)}</li>`).join('')}</ol>
-        ${it.notes.map((n) => alertCard({ level: 'warn', text: n })).join('')}
+        ${it.notes.map((n) => alertCard({ level: 'warn', text: n.text, side: n.side })).join('')}
         ${ex.caution ? alertCard({ level: 'info', text: ex.caution }) : ''}
         <div class="row-actions">
-          ${ex.timer ? `<button class="btn primary small" data-action="timer" data-id="${id}">${I.timer}Temporizador</button>` : ''}
-          <button class="btn ghost small" data-action="hide-ex" data-id="${id}">${I.eyeOff}No me toca</button>
+          ${ex.timer ? `<button class="btn primary small" data-action="timer" data-key="${esc(key)}">${I.timer}Temporizador</button>` : ''}
+          <button class="btn ghost small" data-action="hide-ex" data-id="${esc(ex.id)}">${I.eyeOff}No me toca</button>
         </div>`;
     }
 
     return `<li class="ex${full ? ' done' : ''}">
-      <button class="count" style="--p:${p}" data-action="count" data-id="${esc(id)}" aria-label="${esc(label)}">${counter}</button>
-      <button class="ex-main" data-action="toggle-ex" data-id="${esc(id)}" aria-expanded="${open}">
-        <span class="ex-text"><span class="ex-name">${esc(ex.name)}</span><span class="ex-dose">${esc(ex.dose || '')}</span></span>
+      <button class="count" style="--p:${p}" data-action="count" data-key="${esc(key)}" aria-label="${esc(label)}">${counter}</button>
+      <button class="ex-main" data-action="toggle-ex" data-key="${esc(key)}" aria-expanded="${open}">
+        <span class="ex-text"><span class="ex-name">${esc(ex.name)}${it.optional ? ' <span class="tag">opcional</span>' : ''}</span><span class="ex-dose">${esc(ex.dose || '')}</span></span>
         ${I.chevron}
       </button>
       <div class="ex-detail"${open ? '' : ' hidden'}>${detail}</div>
     </li>`;
+  }
+
+  const byOptional = (a, b) => (a.optional === b.optional ? 0 : a.optional ? 1 : -1);
+
+  function kneeSection(sec, ctx) {
+    const k = sec.knee;
+    const items = sec.items.slice().sort(byOptional);
+    const waiting = sec.waiting.length ? `
+      <details class="card waiting">
+        <summary>${I.lock}<span>Esperando a la ${esc(sec.waiting[0].blocker.name)} <small>(${sec.waiting.length})</small></span>${I.chevron}</summary>
+        <p class="section-sub">Son de la fase ${k.phase} de esta rodilla, pero trabajan las dos piernas: llegarán cuando la ${esc(sec.waiting[0].blocker.name)} esté preparada (fecha aproximada, si todo va bien).</p>
+        <ul class="plain-list">${sec.waiting.map((w) => `<li><span>${esc(w.ex.name)}</span><small>${w.unlockKey ? 'hacia el ' + esc(D.format(w.unlockKey, { day: 'numeric', month: 'short' })) : ''}</small></li>`).join('')}</ul>
+      </details>` : '';
+    return `<section class="knee-section k-${k.side}">
+      <h2><i class="kdot"></i>Rodilla ${k.label.toLowerCase()} <small>· ${k.presurgery ? 'antes de operarte' : `fase ${k.phase}`}</small></h2>
+      <p class="section-sub">${k.presurgery
+        ? 'Prepárala para la cirugía: hazlos solo con esta pierna.'
+        : `Hazlos solo con la pierna ${k.label.toLowerCase()}.`}</p>
+      ${items.length ? `<ul class="ex-list">${items.map(exerciseRow).join('')}</ul>` : '<p class="empty">Hoy no tiene ejercicios propios.</p>'}
+      ${waiting}
+    </section>`;
   }
 
   function viewHoy() {
@@ -170,53 +210,45 @@
     const ctx = d.ctx;
     const adh = Plan.adherence(s, ctx.refKey);
     const hello = s.profile.name ? `Hola, ${esc(s.profile.name)}` : 'Tu recuperación';
-
-    let hero;
-    if (ctx.presurgery) {
-      hero = `<p class="eyebrow">${hello}</p>
-        <h1>Faltan ${-ctx.day} ${-ctx.day === 1 ? 'día' : 'días'}</h1>
-        <p class="hero-sub">para tu cirugía. Practica los ejercicios de la fase 1: después de operarte te será más fácil hacerlos.</p>`;
-    } else {
-      const kneeDays = ctx.sameDate ? '' :
-        `<p class="hero-sub">${ctx.knees.map((k) => `${k.label}: día ${k.day}`).join(' · ')}</p>`;
-      hero = `<div class="hero-row">
-          <div>
-            <p class="eyebrow">${hello}</p>
-            <h1>Día ${ctx.day} <span class="muted">· semana ${ctx.week}</span></h1>
-            <a class="phase-pill" href="#plan">Fase ${ctx.phase} · ${esc(ctx.phaseObj.short)}${ctx.manual ? ' (fijada)' : ''}</a>
-            ${kneeDays}
-          </div>
-          ${adh ? ring(adh.pct) : ''}
-        </div>`;
-    }
-
     const alerts = Plan.alerts(s, ctx);
     const prec = Plan.precautions(ctx);
-    const required = d.items.filter((i) => !i.optional);
-    const optional = d.items.filter((i) => i.optional);
     const hasLogToday = !!s.logs[ctx.refKey];
+    const bothItems = d.both.slice().sort(byOptional);
+    const bothSub = !ctx.sameDate && !ctx.samePhase
+      ? `Trabajan las dos rodillas a la vez, así que van al ritmo de la ${esc(ctx.recent.name)} (operada más tarde).`
+      : 'Trabajan las dos rodillas a la vez.';
 
     return `
-      <header class="hero">${hero}</header>
+      <header class="hero">
+        <div class="hero-row">
+          <div>
+            <p class="eyebrow">${hello}</p>
+            <h1>Hoy</h1>
+            <p class="hero-sub cap">${esc(longDate(ctx.refKey))}</p>
+          </div>
+          ${adh ? ring(adh.pct) : ''}
+        </div>
+        <div class="knee-cards">${ctx.ordered.map(kneeCard).join('')}</div>
+      </header>
+
+      ${ctx.sameDate ? `<div class="callout info">${I.info}<p>Las dos rodillas tienen la misma fecha de cirugía. Si te operaron en fechas distintas, <a href="#perfil">corrige las fechas</a> y el plan se adaptará a cada una.</p></div>` : ''}
       ${alerts.map(alertCard).join('')}
-      ${!hasLogToday ? `<a class="card cta" href="#registro">${I.registro}<span><b>¿Cómo están hoy tus rodillas?</b><small>Anota dolor, hinchazón y ángulos: 1 minuto</small></span>${I.chevron}</a>` : ''}
+      ${!hasLogToday ? `<a class="card cta" href="#registro">${I.registro}<span><b>¿Cómo están hoy tus rodillas?</b><small>Anota dolor, hinchazón y ángulos de cada una: 1 minuto</small></span>${I.chevron}</a>` : ''}
 
       <details class="card precautions">
         <summary>${I.alert}<span>Precauciones ahora <small>(${prec.length})</small></span>${I.chevron}</summary>
-        <ul>${prec.map((p) => `<li class="${p.level}">${esc(p.text)}</li>`).join('')}</ul>
+        <ul>${prec.map((p) => `<li class="${p.level}">${p.side ? `<b>${esc(sideName(p.side))}:</b> ` : ''}${esc(p.text)}</li>`).join('')}</ul>
       </details>
 
-      <section>
-        <h2>Ejercicios de hoy</h2>
-        <p class="section-sub">Toca el círculo cada vez que completes una sesión. Toca el nombre para ver cómo se hace.</p>
-        <ul class="ex-list">${required.map(exerciseRow).join('')}</ul>
-      </section>
+      <p class="section-sub how-to">Toca el círculo cada vez que completes una sesión, y el nombre para ver cómo se hace.</p>
 
-      ${d.custom.length ? `<section><h2>De tu fisio</h2><ul class="ex-list">${d.custom.map(exerciseRow).join('')}</ul></section>` : ''}
+      ${bothItems.length ? `<section>
+        <h2>Con las dos piernas</h2>
+        <p class="section-sub">${bothSub}</p>
+        <ul class="ex-list">${bothItems.map(exerciseRow).join('')}</ul>
+      </section>` : ''}
 
-      ${optional.length ? `<section><h2>Opcionales</h2>
-        <p class="section-sub">Días alternos o cuando tu fisio lo autorice. No cuentan para el % del día.</p>
-        <ul class="ex-list">${optional.map(exerciseRow).join('')}</ul></section>` : ''}
+      ${d.knees.map((sec) => kneeSection(sec, ctx)).join('')}
 
       <a class="card redflag-link" href="#plan/alarmas">${I.phone}<span><b>Señales de alarma</b><small>Cuándo llamar a tu médico o a urgencias</small></span>${I.chevron}</a>
     `;
@@ -225,14 +257,16 @@
   // ─────────────────────────── REGISTRO ───────────────────────────
   const SWELLING = ['Nada', 'Leve', 'Moderada', 'Mucha'];
 
-  function kneeLogFields(side, label, k, ctxKnee) {
+  function kneeLogFields(kc, k) {
     k = k || {};
+    const side = kc.side;
+    const info = kc.presurgery ? 'sin operar todavía' : `${kc.order ? ordinal(kc) + ' · ' : ''}día ${kc.day} · fase ${kc.phase}`;
     const painChips = Array.from({ length: 11 }, (_, v) =>
       `<label class="chip"><input type="radio" name="${side}-pain" value="${v}"${k.pain === v ? ' checked' : ''}><span>${v}</span></label>`).join('');
     const swellChips = SWELLING.map((t, v) =>
       `<label class="chip wide"><input type="radio" name="${side}-swelling" value="${v}"${k.swelling === v ? ' checked' : ''}><span>${t}</span></label>`).join('');
-    return `<fieldset class="card knee-log">
-      <legend>${I.knee}Rodilla ${label}${ctxKnee && ctxKnee.day >= 0 ? ` <small>· día ${ctxKnee.day}</small>` : ''}</legend>
+    return `<fieldset class="card knee-log k-${side}">
+      <legend><i class="kdot"></i>Rodilla ${kc.label.toLowerCase()} <small>${info}</small></legend>
       <div class="field">
         <span class="field-label">Dolor <small>0 = nada · 10 = máximo</small></span>
         <div class="chips pain">${painChips}</div>
@@ -255,14 +289,14 @@
     </fieldset>`;
   }
 
-  function logSummary(log) {
-    return Plan.SIDES.map((s) => {
-      const k = log[s.key] || {};
+  function logSummary(log, ordered) {
+    return ordered.map((kc) => {
+      const k = log[kc.side] || {};
       const parts = [];
       if (num(k.pain)) parts.push(`dolor ${k.pain}`);
       if (num(k.flex)) parts.push(`${k.flex}° flex.`);
       if (num(k.ext)) parts.push(`ext. ${k.ext}°`);
-      return parts.length ? `<span><b>${s.short}</b> ${parts.join(', ')}</span>` : '';
+      return parts.length ? `<span class="k-${kc.side}"><i class="kdot"></i><b>${kc.short}</b> ${parts.join(', ')}</span>` : '';
     }).filter(Boolean).join('') || (log.notes ? '<span>Solo notas</span>' : '');
   }
 
@@ -287,7 +321,7 @@
       </div>
 
       <form id="log-form" data-key="${key}" autocomplete="off">
-        ${Plan.SIDES.map((side, i) => kneeLogFields(side.key, side.label.toLowerCase(), log[side.key], ctx.knees[i])).join('')}
+        ${ctx.ordered.map((kc) => kneeLogFields(kc, log[kc.side])).join('')}
         <label class="card field">
           <span class="field-label">Notas <small>(medicación, sueño, qué hiciste, qué dijo tu fisio…)</small></span>
           <textarea name="notes" rows="3" placeholder="Opcional">${esc(log.notes || '')}</textarea>
@@ -304,7 +338,7 @@
       ${history.length ? `<section><h2>Últimos registros</h2>
         <ul class="history">${history.map((k) => `<li><button data-action="goto-log" data-key="${k}"${k === key ? ' aria-current="date"' : ''}>
           <span class="h-date">${esc(D.format(k, { weekday: 'short', day: 'numeric', month: 'short' }))}</span>
-          <span class="h-sum">${logSummary(s.logs[k])}</span></button></li>`).join('')}</ul></section>` : ''}
+          <span class="h-sum">${logSummary(s.logs[k], ctx.ordered)}</span></button></li>`).join('')}</ul></section>` : ''}
     `;
   }
 
@@ -342,15 +376,32 @@
   }
 
   // ─────────────────────────── PROGRESO ───────────────────────────
-  function seriesFor(field) {
+  const DAY_MS = 86400000;
+
+  function progMode(ctx) {
+    if (ctx.sameDate) return 'fecha';
+    return ui.progMode || 'dias';
+  }
+
+  /** Serie por rodilla. Modo 'dias': x = días desde la cirugía de esa rodilla; 'fecha': x = día del calendario. */
+  function seriesFor(field, mode, ctx) {
     const s = st();
-    return Plan.SIDES.map((side) => ({
-      key: side.key,
-      name: side.label,
-      points: Object.keys(s.logs).sort()
-        .filter((k) => s.logs[k][side.key] && num(s.logs[k][side.key][field]))
-        .map((k) => ({ x: k, y: s.logs[k][side.key][field] }))
-    }));
+    const keys = Object.keys(s.logs).sort();
+    return Plan.SIDES.map((side, i) => {
+      const kc = ctx.bySide[side.key];
+      const points = [];
+      keys.forEach((k) => {
+        const v = s.logs[k][side.key];
+        if (!v || !num(v[field])) return;
+        if (mode === 'dias') {
+          const day = D.diffDays(kc.date, k);
+          if (day >= 0) points.push({ x: day, y: v[field] });
+        } else {
+          points.push({ x: D.toUTC(k) / DAY_MS, y: v[field] });
+        }
+      });
+      return { key: side.key, slot: i + 1, name: side.label, points };
+    });
   }
 
   function lastValue(series) {
@@ -362,32 +413,46 @@
     return series.points.length ? Math.max(...series.points.map((p) => p.y)) : null;
   }
 
-  function dataTable(series, unit) {
-    const dates = [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))].sort().reverse();
-    if (!dates.length) return '';
-    const val = (s, k) => { const p = s.points.find((q) => q.x === k); return p ? p.y + unit : '—'; };
-    return `<details class="table-view"><summary>Ver datos en tabla</summary>
-      <table><thead><tr><th>Fecha</th>${series.map((s) => `<th>${esc(s.name)}</th>`).join('')}</tr></thead>
-      <tbody>${dates.map((k) => `<tr><td>${esc(D.format(k))}</td>${series.map((s) => `<td>${val(s, k)}</td>`).join('')}</tr>`).join('')}</tbody></table></details>`;
+  function xLabel(mode, x, long) {
+    if (mode === 'dias') return (long ? 'Día ' : 'día ') + Math.round(x);
+    const k = D.fromUTC(Math.round(x) * DAY_MS);
+    return long ? D.format(k, { weekday: 'short', day: 'numeric', month: 'short' }) : D.format(k);
   }
 
-  const legend = () => `<div class="legend">${Plan.SIDES.map((s, i) => `<span><i class="sw s${i + 1}"></i>${s.label}</span>`).join('')}</div>`;
+  function dataTable(series, unit, mode) {
+    const xs = [...new Set(series.flatMap((s) => s.points.map((p) => p.x)))].sort((a, b) => b - a);
+    if (!xs.length) return '';
+    const val = (s, x) => { const p = s.points.find((q) => q.x === x); return p ? p.y + unit : '—'; };
+    return `<details class="table-view"><summary>Ver datos en tabla</summary>
+      <table><thead><tr><th>${mode === 'dias' ? 'Día tras la cirugía' : 'Fecha'}</th>${series.map((s) => `<th>${esc(s.name)}</th>`).join('')}</tr></thead>
+      <tbody>${xs.map((x) => `<tr><td>${esc(xLabel(mode, x, true))}</td>${series.map((s) => `<td>${val(s, x)}</td>`).join('')}</tr>`).join('')}</tbody></table></details>`;
+  }
 
-  function chartCard(id, title, sub, series, unit) {
+  const legend = (ref) => `<div class="legend">${Plan.SIDES.map((s, i) => `<span><i class="sw s${i + 1}"></i>${s.label}</span>`).join('')}${ref ? '<span><i class="sw-dash"></i>Evolución habitual</span>' : ''}</div>`;
+
+  function chartCard(id, title, sub, series, unit, mode, ref) {
     const has = series.some((s) => s.points.length);
     return `<section class="card chart-card">
       <h2>${title}</h2>
       <p class="section-sub">${sub}</p>
-      ${has ? `${legend()}<div class="chart" id="${id}"></div>${dataTable(series, unit)}` : '<p class="empty">Todavía no hay datos. Anótalos en Registro.</p>'}
+      ${has ? `${legend(ref)}<div class="chart" id="${id}"></div>${dataTable(series, unit, mode)}` : '<p class="empty">Todavía no hay datos. Anótalos en Registro.</p>'}
     </section>`;
+  }
+
+  /** Flexión habitual según los días desde la cirugía (más lenta si hay sutura de menisco). */
+  function flexReference(repair) {
+    return repair
+      ? [{ x: 3, y: 60 }, { x: 14, y: 90 }, { x: 42, y: 90 }, { x: 70, y: 120 }, { x: 112, y: 130 }, { x: 168, y: 135 }]
+      : [{ x: 3, y: 60 }, { x: 14, y: 90 }, { x: 42, y: 120 }, { x: 84, y: 130 }, { x: 168, y: 135 }];
   }
 
   function viewProgreso() {
     const s = st();
     const ctx = Plan.context(s);
-    const flex = seriesFor('flex');
-    const ext = seriesFor('ext');
-    const pain = seriesFor('pain');
+    const mode = progMode(ctx);
+    const flex = seriesFor('flex', mode, ctx);
+    const ext = seriesFor('ext', mode, ctx);
+    const pain = seriesFor('pain', mode, ctx);
     const streak = Plan.streak(s);
 
     let sum = 0, n = 0;
@@ -396,28 +461,66 @@
       if (a) { sum += a.pct; n++; }
     }
     const week = n ? Math.round(sum / n * 100) + '%' : '—';
-    const pair = (a, b, u) => `<span>D ${a === null ? '—' : a + u}</span><span>I ${b === null ? '—' : b + u}</span>`;
+    const deg = (v) => (v === null ? '—' : v + '°');
+
+    const kneeStat = (kc) => {
+      const i = kc.side === 'der' ? 0 : 1;
+      return `<div class="stat knee-stat k-${kc.side}">
+        <small><i class="kdot"></i>${kc.label}</small>
+        <b>${kc.presurgery ? 'Sin operar' : 'Fase ' + kc.phase}</b>
+        <small>${kc.order ? ordinal(kc) + ' · ' : ''}${kc.presurgery ? `faltan ${-kc.day} días` : `día ${kc.day}`}</small>
+        <div class="stat-lines">
+          <span>Mejor flexión <b>${deg(maxValue(flex[i]))}</b></span>
+          <span>Le falta para recta <b>${deg(lastValue(ext[i]))}</b></span>
+        </div>
+      </div>`;
+    };
+
+    const cmp = Plan.comparison(s, ctx, 'flex');
+    let cmpCard = '';
+    if (cmp) {
+      const diff = cmp.recentValue - cmp.firstValue;
+      const verdict = Math.abs(diff) <= 5
+        ? 'van muy parecidas.'
+        : diff > 0
+          ? `la ${cmp.recent.name} va ${diff}° por delante.`
+          : `la ${cmp.recent.name} va ${-diff}° por detrás. Cada recuperación es distinta; si la diferencia crece, coméntalo con tu fisio.`;
+      cmpCard = `<div class="card compare">${I.progreso}<div>
+        <b>Día ${cmp.day} de cada rodilla</b>
+        <p>La ${esc(cmp.recent.name)} dobla <b>${cmp.recentValue}°</b>. La ${esc(cmp.first.name)} doblaba <b>${cmp.firstValue}°</b> en su día ${cmp.firstDay}: ${esc(verdict)}</p>
+      </div></div>`;
+    }
+
+    const toggle = ctx.sameDate ? '' : `<div class="segmented" role="group" aria-label="Cómo comparar las rodillas">
+        <button data-action="prog-mode" data-mode="dias" aria-pressed="${mode === 'dias'}">Por día de recuperación</button>
+        <button data-action="prog-mode" data-mode="fecha" aria-pressed="${mode === 'fecha'}">Por fecha</button>
+      </div>`;
+    const dias = mode === 'dias';
 
     return `
       <header class="page-head">
         <h1>Progreso</h1>
-        <p class="section-sub">${ctx.presurgery ? 'Aún no te has operado.' : `Día ${ctx.day} desde la cirugía · fase ${ctx.phase}`}</p>
+        <p class="section-sub">${ctx.sameDate ? 'Tus dos rodillas.' : 'Cada rodilla tiene su propia cirugía: compáralas en el mismo día de su recuperación.'}</p>
       </header>
 
       <div class="stats">
-        <div class="stat"><small>Mejor flexión</small><div class="stat-pair">${pair(maxValue(flex[0]), maxValue(flex[1]), '°')}</div></div>
-        <div class="stat"><small>Le falta para estar recta</small><div class="stat-pair">${pair(lastValue(ext[0]), lastValue(ext[1]), '°')}</div></div>
+        ${ctx.ordered.map(kneeStat).join('')}
         <div class="stat"><small>Racha</small><b>${streak}</b><small>${streak === 1 ? 'día' : 'días'} haciendo al menos la mitad del plan</small></div>
         <div class="stat"><small>Últimos 7 días</small><b>${week}</b><small>del plan completado</small></div>
       </div>
 
-      ${chartCard('ch-flex', 'Flexión', `Cuánto se doblan tus rodillas. Meta de esta fase: ${ctx.phaseObj.flexTarget}°.`, flex, '°')}
-      ${chartCard('ch-ext', 'Extensión', 'Cuántos grados le faltan para estar recta. La meta es 0°.', ext, '°')}
-      ${chartCard('ch-pain', 'Dolor', 'De 0 (nada) a 10 (máximo).', pain, '')}
+      ${cmpCard}
+      ${toggle}
+
+      ${chartCard('ch-flex', 'Flexión', dias
+        ? 'Cuánto se dobla cada rodilla según los días desde su cirugía. La línea discontinua es la evolución habitual.'
+        : 'Cuánto se dobla cada rodilla, por fecha.', flex, '°', mode, dias)}
+      ${chartCard('ch-ext', 'Extensión', 'Cuántos grados le faltan a cada rodilla para estar recta. La meta es 0°.', ext, '°', mode, false)}
+      ${chartCard('ch-pain', 'Dolor', 'De 0 (nada) a 10 (máximo).', pain, '', mode, false)}
 
       <section class="card chart-card">
         <h2>Constancia</h2>
-        <p class="section-sub">Porcentaje del plan diario completado, últimas 12 semanas.</p>
+        <p class="section-sub">Porcentaje del plan diario completado (las dos rodillas), últimas 12 semanas.</p>
         <div class="heat-legend"><span>Menos</span><i class="cell-sw l0"></i><i class="cell-sw l1"></i><i class="cell-sw l2"></i><i class="cell-sw l3"></i><i class="cell-sw l4"></i><span>Más</span></div>
         <div class="chart" id="ch-heat"></div>
       </section>
@@ -427,54 +530,101 @@
   function drawProgressCharts() {
     const s = st();
     const ctx = Plan.context(s);
+    const mode = progMode(ctx);
+    const dias = mode === 'dias';
+    const xFmt = (x) => xLabel(mode, x, false);
+    const tipFmt = (x) => xLabel(mode, x, true) + (dias ? ' tras su cirugía' : '');
+    const repair = ctx.knees.some((k) => k.repair);
     const draw = () => {
       const el = (id) => document.getElementById(id);
-      if (el('ch-flex')) Charts.line(el('ch-flex'), { label: 'Flexión de cada rodilla por fecha', unit: '°', series: seriesFor('flex'), yMin: 0, yMax: 140, target: { y: ctx.phaseObj.flexTarget, label: `Meta ${ctx.phaseObj.flexTarget}°` } });
-      if (el('ch-ext')) Charts.line(el('ch-ext'), { label: 'Grados que le faltan a cada rodilla para estar recta', unit: '°', series: seriesFor('ext'), yMin: 0, yMax: 10, target: { y: 0, label: 'Meta 0°' } });
-      if (el('ch-pain')) Charts.line(el('ch-pain'), { label: 'Dolor de cada rodilla por fecha', unit: '', series: seriesFor('pain'), yMin: 0, yMax: 10 });
-      if (el('ch-heat')) Charts.heatmap(el('ch-heat'), {
-        weeks: 12,
-        today: D.todayKey(),
-        valueFor: (k) => { const a = Plan.adherence(s, k); return a ? a.pct : null; }
-      });
+      const base = { xFmt, tipFmt };
+      if (el('ch-flex')) Charts.line(el('ch-flex'), Object.assign({}, base, {
+        label: 'Flexión de cada rodilla', unit: '°', series: seriesFor('flex', mode, ctx), yMin: 0, yMax: 140,
+        reference: dias ? flexReference(repair) : null
+      }));
+      if (el('ch-ext')) Charts.line(el('ch-ext'), Object.assign({}, base, {
+        label: 'Grados que le faltan a cada rodilla para estar recta', unit: '°', series: seriesFor('ext', mode, ctx), yMin: 0, yMax: 10,
+        target: { y: 0, label: 'Meta 0°' }
+      }));
+      if (el('ch-pain')) Charts.line(el('ch-pain'), Object.assign({}, base, {
+        label: 'Dolor de cada rodilla', unit: '', series: seriesFor('pain', mode, ctx), yMin: 0, yMax: 10
+      }));
+      if (el('ch-heat')) {
+        const start = Plan.trackingStart(s);
+        Charts.heatmap(el('ch-heat'), {
+          weeks: 12,
+          today: D.todayKey(),
+          valueFor: (k) => { const a = Plan.adherence(s, k, start); return a ? a.pct : null; }
+        });
+      }
     };
     requestAnimationFrame(draw);
   }
 
   // ─────────────────────────── PLAN ───────────────────────────
+  const legsTag = { one: 'una pierna', both: 'dos piernas', any: 'general' };
+
+  function phaseExercises(ph, ctx, s) {
+    return P.EXERCISES.filter((e) => e.phases.includes(ph.id)).map((e) => {
+      const gates = ctx.ordered.map((k) => ({ k, g: Plan.gateFor(e, k) })).filter((x) => x.g.minDay > 0);
+      let lock = '';
+      if (gates.length) {
+        const withReason = gates.filter((x) => x.g.reason);
+        lock = withReason.length
+          ? withReason.map((x) => `${x.k.label}: desde las ${Math.round(x.g.minDay / 7)} semanas (${x.g.reason})`).join(' · ')
+          : `Desde las ${Math.round(gates[0].g.minDay / 7)} semanas`;
+      }
+      return `<li>${esc(e.name)} <span class="tag">${legsTag[e.legs]}</span>${s.hidden[e.id] ? ' <span class="tag">oculto</span>' : ''}${lock ? `<span class="lock">${I.lock}${esc(lock)}</span>` : ''}</li>`;
+    }).join('');
+  }
+
   function viewPlan() {
     const s = st();
     const ctx = Plan.context(s);
+    const showPrehab = ctx.knees.some((k) => k.presurgery);
 
-    const phases = P.PHASES.map((ph) => {
-      const current = ph.id === ctx.phase;
-      const fakeCtx = Object.assign({}, ctx, { phase: ph.id });
-      const exs = P.EXERCISES.filter((e) => e.phases.includes(ph.id)).map((e) => Plan.exerciseStatus(e, fakeCtx, s));
-      const done = ph.criteria.filter((c) => s.criteria[c.id]).length;
-      return `<details class="card phase${current ? ' current' : ''}"${current ? ' open' : ''}>
+    const phases = P.PHASES.filter((ph) => ph.id > 0 || showPrehab).map((ph) => {
+      const here = ctx.ordered.filter((k) => k.phase === ph.id);
+      const badges = here.map((k) => `<span class="kbadge k-${k.side}"><i class="kdot"></i>${k.label}</span>`).join('');
+      const counts = ctx.ordered.map((k) =>
+        `${k.label} ${ph.criteria.filter((c) => s.criteria[k.side + ':' + c.id]).length}/${ph.criteria.length}`).join(' · ');
+      return `<details class="card phase${here.length ? ' current' : ''}"${here.length ? ' open' : ''}>
         <summary>
           <span class="phase-num">${ph.id}</span>
-          <span class="phase-title"><b>${esc(ph.title)}</b><small>${ph.range}${current ? ' · <em>estás aquí</em>' : ''}</small></span>
+          <span class="phase-title"><b>${esc(ph.title)}</b><small>${ph.range}</small>${badges ? `<span class="kbadges">${badges}</span>` : ''}</span>
           ${I.chevron}
         </summary>
         <h3>Objetivos</h3>
         <ul class="bullets">${ph.goals.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>
-        <h3>Para pasar a la siguiente fase <small>${done}/${ph.criteria.length}</small></h3>
-        <ul class="checklist">${ph.criteria.map((c) => `<li><label><input type="checkbox" data-criterion="${c.id}"${s.criteria[c.id] ? ' checked' : ''}><span>${esc(c.text)}</span></label></li>`).join('')}</ul>
+        <h3>Para pasar a la siguiente fase <small data-counts>${counts}</small></h3>
+        <p class="section-sub">Marca cada criterio cuando lo cumpla esa rodilla.</p>
+        <ul class="criteria">${ph.criteria.map((c) => `<li>
+          <span>${esc(c.text)}</span>
+          <span class="kchips">${ctx.ordered.map((k) => `<label class="kchip k-${k.side}"><input type="checkbox" data-criterion="${k.side}:${c.id}" data-phase="${ph.id}"${s.criteria[k.side + ':' + c.id] ? ' checked' : ''}><span>${k.side === 'der' ? 'Der.' : 'Izq.'}</span></label>`).join('')}</span>
+        </li>`).join('')}</ul>
         <h3>Ejercicios</h3>
-        <ul class="ex-names">${exs.map((x) => `<li>${esc(x.ex.name)}${x.hidden ? ' <span class="tag">oculto</span>' : ''}${x.locked ? `<span class="lock">${I.lock}${esc(x.lockText)}</span>` : ''}</li>`).join('')}</ul>
+        <ul class="ex-names">${phaseExercises(ph, ctx, s)}</ul>
       </details>`;
     }).join('');
+
+    const rhythm = ctx.sameDate ? '' : `<section class="card">
+        <h2>Dos cirugías, dos ritmos</h2>
+        <ul class="bullets">
+          <li>Cada rodilla avanza por sus fases según el tiempo desde <b>su</b> operación (o la fase que fijes en Ajustes).</li>
+          <li>Los ejercicios con <b>una pierna</b> siguen la fase de esa rodilla.</li>
+          <li>Lo que usa <b>las dos piernas</b> (caminar, bici, sentadillas, correr, saltar) va al ritmo de la ${esc(ctx.recent.name)}, la operada más tarde.</li>
+          <li>Volver al deporte depende de que <b>las dos</b> estén listas.</li>
+        </ul>
+      </section>`;
 
     return `
       <header class="page-head">
         <h1>Tu plan</h1>
-        <p class="section-sub">${ctx.manual
-          ? `Fase ${ctx.phase} fijada manualmente (por tiempo te correspondería la ${ctx.phaseAuto}).`
-          : `Fase ${ctx.phase} según el tiempo desde la cirugía.`}
-          Pasar de fase depende de cumplir los criterios, no solo del calendario: revísalos con tu fisio.
-          ${!ctx.sameDate ? ` El plan sigue a la rodilla ${ctx.refKnee.label.toLowerCase()}, la operada más recientemente.` : ''}</p>
+        <p class="section-sub">Pasar de fase depende de cumplir los criterios, no solo del calendario: revísalos con tu fisio.</p>
+        <div class="knee-cards">${ctx.ordered.map(kneeCard).join('')}</div>
       </header>
+
+      ${rhythm}
 
       <section class="card danger" id="alarmas">
         <h2>${I.alert}Señales de alarma</h2>
@@ -496,41 +646,51 @@
   }
 
   // ─────────────────────────── AJUSTES ───────────────────────────
+  const KNEE_TARGET = { ambas: 'las dos piernas', izq: 'pierna izquierda', der: 'pierna derecha' };
+
   function viewAjustes() {
     const s = st();
     const ctx = Plan.context(s);
-    const p = s.profile;
-    const kneeInfo = (k, label) => `<div class="knee-info"><b>${label}</b>
-      <span>${esc(D.format(k.date, { day: 'numeric', month: 'long', year: 'numeric' }))}</span>
-      <span>Menisco: ${esc(P.MENISCUS[k.meniscus] || '—')}</span>
-      <span>Injerto: ${esc(P.GRAFTS[k.graft] || '—')}</span></div>`;
+    const kneeInfo = (kc) => `<div class="knee-info k-${kc.side}">
+      <b><i class="kdot"></i>Rodilla ${kc.label.toLowerCase()}${kc.order ? ' · ' + ordinal(kc) : ''}</b>
+      <span>${esc(D.format(kc.date, { day: 'numeric', month: 'long', year: 'numeric' }))}${kc.presurgery ? ' (prevista)' : ''}</span>
+      <span>Menisco: ${esc(P.MENISCUS[kc.meniscus] || '—')}</span>
+      <span>Injerto: ${esc(P.GRAFTS[kc.graft] || '—')}</span></div>`;
+    const phaseSelect = (kc) => `<label class="field k-${kc.side}">
+      <span class="field-label"><i class="kdot"></i>Rodilla ${kc.label.toLowerCase()}</span>
+      <select class="select" data-phase-side="${kc.side}"${kc.presurgery ? ' disabled' : ''}>
+        <option value="">${kc.presurgery ? 'Aún sin operar' : `Automática (ahora: fase ${kc.phaseAuto})`}</option>
+        ${P.PHASES.filter((ph) => ph.id > 0).map((ph) => `<option value="${ph.id}"${s.phaseOverride[kc.side] === ph.id ? ' selected' : ''}>Fase ${ph.id} · ${esc(ph.short)}</option>`).join('')}
+      </select></label>`;
     const hidden = Object.keys(s.hidden || {}).filter((id) => s.hidden[id]).map(findExercise).filter(Boolean);
 
     return `
       <header class="page-head"><h1>Ajustes</h1></header>
 
       <section class="card">
-        <h2>Tu cirugía</h2>
-        ${p.sameSurgery ? kneeInfo(p.knees.der, 'Ambas rodillas') : kneeInfo(p.knees.der, 'Rodilla derecha') + kneeInfo(p.knees.izq, 'Rodilla izquierda')}
-        <a class="btn ghost small" href="#perfil">Editar datos de la cirugía</a>
+        <h2>Tus cirugías</h2>
+        ${ctx.ordered.map(kneeInfo).join('')}
+        <a class="btn ghost small" href="#perfil">Editar datos de las cirugías</a>
       </section>
 
       <section class="card">
-        <h2>Fase del plan</h2>
-        <p class="section-sub">Si tu fisio te dice que estás en otra fase, fíjala aquí.</p>
-        <select id="phase-override" class="select">
-          <option value="">Automática (ahora: fase ${ctx.phaseAuto})</option>
-          ${P.PHASES.map((ph) => `<option value="${ph.id}"${s.phaseOverride === ph.id ? ' selected' : ''}>Fase ${ph.id} · ${esc(ph.short)}</option>`).join('')}
-        </select>
+        <h2>Fase de cada rodilla</h2>
+        <p class="section-sub">Por defecto se calcula con el tiempo desde cada cirugía. Si tu fisio te dice que una rodilla está en otra fase, fíjala aquí.</p>
+        ${ctx.ordered.map(phaseSelect).join('')}
       </section>
 
       <section class="card">
         <h2>Ejercicios de tu fisio</h2>
-        <p class="section-sub">Aparecerán cada día en «Hoy», en cualquier fase.</p>
-        ${s.custom.length ? `<ul class="plain-list">${s.custom.map((c) => `<li><span><b>${esc(c.name)}</b><small>${esc(c.dose || '')}${c.perDay > 1 ? ` · ${c.perDay} veces al día` : ''}</small></span>
+        <p class="section-sub">Aparecerán cada día en «Hoy», en la sección de la pierna que elijas.</p>
+        ${s.custom.length ? `<ul class="plain-list">${s.custom.map((c) => `<li><span><b>${esc(c.name)}</b><small>${esc(KNEE_TARGET[c.knee] || KNEE_TARGET.ambas)}${c.dose ? ' · ' + esc(c.dose) : ''}${c.perDay > 1 ? ` · ${c.perDay} veces al día` : ''}</small></span>
           <button class="icon-btn" data-action="del-custom" data-id="${esc(c.id)}" aria-label="Borrar ${esc(c.name)}">${I.trash}</button></li>`).join('')}</ul>` : ''}
         <form id="custom-form" class="stack">
           <label class="field"><span class="field-label">Nombre</span><input name="name" required maxlength="80" placeholder="p. ej. Sentadilla isométrica en pared"></label>
+          <label class="field"><span class="field-label">¿Con qué pierna?</span>
+            <select name="knee" class="select">
+              <option value="ambas">Las dos piernas a la vez</option>
+              ${ctx.ordered.map((kc) => `<option value="${kc.side}">Solo la ${kc.side === 'der' ? 'derecha' : 'izquierda'}</option>`).join('')}
+            </select></label>
           <div class="field-row">
             <label class="field"><span class="field-label">Dosis</span><input name="dose" maxlength="80" placeholder="p. ej. 3 × 45 s"></label>
             <label class="field"><span class="field-label">Veces al día</span>
@@ -569,14 +729,38 @@
   }
 
   // ─────────────────────────── PERFIL / BIENVENIDA ───────────────────────────
-  function kneeFormFields(side, k, legend, required) {
+  function kneeFormFields(side, k) {
     const opts = (map, sel) => Object.keys(map).map((v) => `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(map[v])}</option>`).join('');
-    return `<fieldset class="card knee-form" id="kf-${side}">
-      <legend>${I.knee}<span class="kf-legend">${legend}</span></legend>
-      <label class="field"><span class="field-label">Fecha de la cirugía</span><input type="date" name="${side}-date"${required ? ' required' : ''} value="${esc(k.date || '')}"></label>
+    const label = side === 'der' ? 'Rodilla derecha' : 'Rodilla izquierda';
+    return `<fieldset class="card knee-form k-${side}" id="kf-${side}">
+      <legend><i class="kdot"></i>${label} <small class="kf-order"></small></legend>
+      <label class="field"><span class="field-label">Fecha de la cirugía</span><input type="date" name="${side}-date" required value="${esc(k.date || '')}"></label>
       <label class="field"><span class="field-label">¿Qué te hicieron en el menisco?</span><select class="select" name="${side}-meniscus">${opts(P.MENISCUS, k.meniscus || 'nose')}</select></label>
       <label class="field"><span class="field-label">Tipo de injerto del LCA</span><select class="select" name="${side}-graft">${opts(P.GRAFTS, k.graft || 'nose')}</select></label>
     </fieldset>`;
+  }
+
+  /** Texto con el orden y la separación entre las dos cirugías (se actualiza al cambiar las fechas). */
+  function surgeryGapText(derDate, izqDate) {
+    if (!D.isKey(derDate) || !D.isKey(izqDate)) return '';
+    const gap = Math.abs(D.diffDays(derDate, izqDate));
+    if (gap === 0) return 'Las dos en la misma fecha.';
+    const first = derDate < izqDate ? 'derecha' : 'izquierda';
+    const months = gap / 30.44;
+    const approx = months >= 1 ? ` (unos ${Math.round(months * 2) / 2} meses)`.replace('.5', ',5') : '';
+    return `Primero la ${first}; entre las dos cirugías hay ${gap} días${approx}.`;
+  }
+
+  function updateSurgeryOrder() {
+    const der = document.querySelector('[name="der-date"]');
+    const izq = document.querySelector('[name="izq-date"]');
+    if (!der || !izq) return;
+    const out = document.getElementById('surgery-gap');
+    if (out) out.textContent = surgeryGapText(der.value, izq.value);
+    const both = D.isKey(der.value) && D.isKey(izq.value) && der.value !== izq.value;
+    const set = (side, n) => { const el = document.querySelector(`#kf-${side} .kf-order`); if (el) el.textContent = n ? `${n}.ª cirugía` : ''; };
+    set('der', both ? (der.value < izq.value ? 1 : 2) : 0);
+    set('izq', both ? (izq.value < der.value ? 1 : 2) : 0);
   }
 
   function viewProfile() {
@@ -586,26 +770,23 @@
     const blank = { date: '', meniscus: 'nose', graft: 'nose' };
     const der = p ? p.knees.der : blank;
     const izq = p ? p.knees.izq : blank;
-    const same = p ? p.sameSurgery : true;
+    setTimeout(updateSurgeryOrder, 0);
 
     return `
-      ${editing ? `<header class="page-head"><h1>Tu cirugía</h1></header>` : `
+      ${editing ? `<header class="page-head"><h1>Tus cirugías</h1></header>` : `
       <header class="welcome">
         <img src="icons/icon.svg" alt="" width="72" height="72">
         <h1>Recupera tus rodillas</h1>
-        <p>Tu plan diario de rehabilitación tras la cirugía de <b>LCA y menisco</b> en las dos rodillas: ejercicios por fases, registro de dolor y movilidad, y tu progreso en gráficos.</p>
+        <p>Tu plan diario de rehabilitación tras la cirugía de <b>LCA y menisco</b> en las dos rodillas, cada una con su propia operación: ejercicios por fases, registro de dolor y movilidad, y tu progreso en gráficos.</p>
       </header>`}
 
       <form id="profile-form" class="stack">
         <label class="card field"><span class="field-label">Tu nombre <small>(opcional)</small></span><input name="name" maxlength="40" value="${esc(p ? p.name : '')}" placeholder="Para saludarte"></label>
 
-        <label class="card switch-row">
-          <input type="checkbox" name="same" id="same-surgery"${same ? ' checked' : ''}>
-          <span>Me operaron las dos rodillas el mismo día y con la misma técnica</span>
-        </label>
-
-        ${kneeFormFields('der', der, same ? 'Ambas rodillas' : 'Rodilla derecha', true)}
-        <div id="izq-wrap"${same ? ' hidden' : ''}>${kneeFormFields('izq', izq, 'Rodilla izquierda', !same)}</div>
+        <p class="section-sub">Indica la fecha y el tipo de cirugía de cada rodilla. Si una todavía no está operada, pon la fecha prevista.</p>
+        ${kneeFormFields('izq', izq)}
+        ${kneeFormFields('der', der)}
+        <p class="gap-info" id="surgery-gap" aria-live="polite"></p>
 
         <p class="section-sub">¿No sabes qué te hicieron en el menisco o qué injerto te pusieron? Míralo en tu informe quirúrgico o pregúntalo. Mientras tanto, con «No lo sé» la app aplica las precauciones más prudentes.</p>
 
@@ -622,21 +803,25 @@
 
   function saveProfile(form) {
     const fd = new FormData(form);
-    const same = !!fd.get('same');
     const knee = (side) => ({
       date: String(fd.get(side + '-date') || ''),
       meniscus: String(fd.get(side + '-meniscus') || 'nose'),
       graft: String(fd.get(side + '-graft') || 'nose')
     });
     const der = knee('der');
-    const izq = same ? Object.assign({}, der) : knee('izq');
+    const izq = knee('izq');
     if (!D.isKey(der.date) || !D.isKey(izq.date)) {
-      toast('Indica la fecha de la cirugía');
+      toast('Indica la fecha de cada cirugía');
       return;
     }
-    const first = !st().profile;
+    const prev = st().profile;
+    const first = !prev;
     Store.update((s) => {
-      s.profile = { name: String(fd.get('name') || '').trim(), sameSurgery: same, knees: { der, izq } };
+      s.profile = {
+        name: String(fd.get('name') || '').trim(),
+        createdAt: (prev && prev.createdAt) || D.todayKey(),
+        knees: { der, izq }
+      };
     });
     if (first) Store.requestPersist();
     toast(first ? '¡Listo! Este es tu plan de hoy' : 'Datos actualizados');
@@ -670,12 +855,17 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  function openTimer(id) {
-    const ex = findExercise(id);
-    if (!ex || !ex.timer) return;
+  function findItem(key) {
+    return Plan.allItems(Plan.daily(st())).find((x) => x.key === key);
+  }
+
+  function openTimer(key) {
+    const it = findItem(key);
+    if (!it || !it.ex.timer) return;
+    const ex = it.ex;
     const t = ex.timer;
     timer = {
-      ex, work: t.work * 1000, rest: (t.rest || 0) * 1000, reps: t.reps || 1,
+      ex, key, side: it.side, work: t.work * 1000, rest: (t.rest || 0) * 1000, reps: t.reps || 1,
       workLabel: t.workLabel || (t.work <= 60 ? 'Aguanta' : 'En marcha'),
       restLabel: t.restLabel || 'Descansa',
       rep: 1, phase: 'ready', remaining: t.work * 1000, endAt: 0, interval: null, lastTick: null, wake: null
@@ -683,6 +873,7 @@
     modalRoot.innerHTML = `<div class="modal-backdrop" data-action="timer-close">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="t-title">
         <h2 id="t-title">${esc(ex.name)}</h2>
+        ${it.side ? `<p class="t-side k-${it.side}"><i class="kdot"></i>${esc(sideName(it.side))}</p>` : ''}
         <p class="t-dose">${esc(ex.dose || '')}</p>
         <div class="t-phase" id="t-phase"></div>
         <div class="t-time" id="t-time"></div>
@@ -793,24 +984,23 @@
   }
 
   // ─────────────────────────── Acciones ───────────────────────────
-  function incrementCount(id, perDay, wrap) {
+  function incrementCount(key, perDay, wrap) {
     const today = D.todayKey();
     let count = 0;
     Store.update((s) => {
       const day = s.done[today] = s.done[today] || {};
-      count = (day[id] || 0) + 1;
+      count = (day[key] || 0) + 1;
       if (count > perDay) count = wrap ? 0 : perDay;
-      if (count) day[id] = count; else delete day[id];
+      if (count) day[key] = count; else delete day[key];
     });
     return count;
   }
 
   const actions = {
     count(el) {
-      const d = Plan.daily(st());
-      const it = d.items.concat(d.custom).find((x) => x.ex.id === el.dataset.id);
+      const it = findItem(el.dataset.key);
       if (!it) return;
-      const c = incrementCount(it.ex.id, it.perDay, true);
+      const c = incrementCount(it.key, it.perDay, true);
       if (c === it.perDay) { buzz(30); }
       if (c === 0) toast('Desmarcado');
       render();
@@ -818,13 +1008,14 @@
       if (c === it.perDay && a && a.pct >= 1) toast('¡Plan de hoy completado! 💪');
     },
     'toggle-ex'(el) {
-      const id = el.dataset.id;
-      ui.expanded[id] = !ui.expanded[id];
-      el.setAttribute('aria-expanded', String(ui.expanded[id]));
+      const key = el.dataset.key;
+      ui.expanded[key] = !ui.expanded[key];
+      el.setAttribute('aria-expanded', String(ui.expanded[key]));
       const detail = el.parentElement.querySelector('.ex-detail');
-      if (detail) detail.hidden = !ui.expanded[id];
+      if (detail) detail.hidden = !ui.expanded[key];
     },
-    timer(el) { openTimer(el.dataset.id); },
+    timer(el) { openTimer(el.dataset.key); },
+    'prog-mode'(el) { ui.progMode = el.dataset.mode; render(); },
     'hide-ex'(el) {
       Store.update((s) => { s.hidden[el.dataset.id] = true; });
       toast('Ocultado. Puedes recuperarlo en Ajustes');
@@ -882,12 +1073,11 @@
       timerClose();
     },
     'timer-done'() {
-      const id = timer && timer.ex.id;
+      const key = timer && timer.key;
       timerClose();
-      if (!id) return;
-      const d = Plan.daily(st());
-      const it = d.items.concat(d.custom).find((x) => x.ex.id === id);
-      if (it) { incrementCount(id, it.perDay, false); render(); toast('¡Bien hecho!'); }
+      if (!key) return;
+      const it = findItem(key);
+      if (it) { incrementCount(key, it.perDay, false); render(); toast('¡Bien hecho!'); }
     }
   };
 
@@ -900,28 +1090,27 @@
 
   document.addEventListener('change', (e) => {
     const t = e.target;
-    if (t.id === 'same-surgery') {
-      document.getElementById('izq-wrap').hidden = t.checked;
-      document.querySelector('#kf-der .kf-legend').textContent = t.checked ? 'Ambas rodillas' : 'Rodilla derecha';
-      const izqDate = document.querySelector('[name="izq-date"]');
-      izqDate.required = !t.checked;
-      // Al separar las rodillas, partir de los datos de la derecha
-      if (!t.checked && !izqDate.value) {
-        ['date', 'meniscus', 'graft'].forEach((f) => {
-          document.querySelector(`[name="izq-${f}"]`).value = document.querySelector(`[name="der-${f}"]`).value;
-        });
-      }
+    if (t.name === 'der-date' || t.name === 'izq-date') {
+      updateSurgeryOrder();
     } else if (t.closest && t.closest('#log-form')) {
       saveLogForm(t.closest('#log-form'));
     } else if (t.dataset.criterion) {
       Store.update((s) => { if (t.checked) s.criteria[t.dataset.criterion] = true; else delete s.criteria[t.dataset.criterion]; });
-      const h3 = t.closest('details').querySelectorAll('h3')[1];
-      const list = t.closest('.checklist');
-      const small = h3 && h3.querySelector('small');
-      if (small) small.textContent = list.querySelectorAll('input:checked').length + '/' + list.querySelectorAll('input').length;
-    } else if (t.id === 'phase-override') {
-      Store.update((s) => { s.phaseOverride = t.value ? parseInt(t.value, 10) : null; });
-      toast(t.value ? 'Fase ' + t.value + ' fijada' : 'Fase automática');
+      // Actualizar el recuento "Izquierda 2/5 · Derecha 0/5" de esa fase
+      const details = t.closest('details');
+      const ph = P.PHASES.find((x) => String(x.id) === t.dataset.phase);
+      const counts = details && details.querySelector('[data-counts]');
+      if (ph && counts) {
+        const s = st();
+        counts.textContent = Plan.context(s).ordered.map((k) =>
+          `${k.label} ${ph.criteria.filter((c) => s.criteria[k.side + ':' + c.id]).length}/${ph.criteria.length}`).join(' · ');
+      }
+    } else if (t.dataset.phaseSide) {
+      const side = t.dataset.phaseSide;
+      Store.update((s) => {
+        if (t.value) s.phaseOverride[side] = parseInt(t.value, 10); else delete s.phaseOverride[side];
+      });
+      toast(`${sideName(side)}: ` + (t.value ? 'fase ' + t.value + ' fijada' : 'fase automática'));
     } else if (t.id === 'import-file' && t.files && t.files[0]) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -962,6 +1151,7 @@
         s.custom.push({
           id: 'c-' + Date.now().toString(36),
           name,
+          knee: ['der', 'izq'].includes(fd.get('knee')) ? String(fd.get('knee')) : 'ambas',
           dose: String(fd.get('dose') || '').trim(),
           perDay: parseInt(fd.get('perDay'), 10) || 1,
           notes: String(fd.get('notes') || '').trim()

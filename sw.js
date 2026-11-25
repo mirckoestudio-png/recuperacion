@@ -3,7 +3,7 @@
  * Sirve primero desde la caché y actualiza en segundo plano.
  * Cambia CACHE al publicar una versión nueva.
  */
-const CACHE = 'rodillas-v1';
+const CACHE = 'rodillas-v2';
 const FILES = [
   './',
   './index.html',

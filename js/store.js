@@ -51,24 +51,62 @@
 
   var KEY = 'rodillas.v1';
 
+  var VERSION = 2;
+  var SIDES = ['der', 'izq'];
+
   function defaults() {
     return {
-      version: 1,
-      profile: null,       // { name, sameSurgery, knees: { der: {date, meniscus, graft}, izq: {...} } }
-      phaseOverride: null, // null = automática; 1–5 = fijada por tu fisio
-      done: {},            // { 'YYYY-MM-DD': { exerciseId: veces } }
+      version: VERSION,
+      profile: null,       // { name, knees: { der: {date, meniscus, graft}, izq: {...} } }
+      phaseOverride: {},   // { der: 1–5, izq: 1–5 } fijada por tu fisio; sin valor = automática
+      done: {},            // { 'YYYY-MM-DD': { 'ejercicio' | 'ejercicio@der': veces } }
       logs: {},            // { 'YYYY-MM-DD': { der: {pain, swelling, flex, ext}, izq: {...}, notes } }
-      custom: [],          // ejercicios de tu fisio [{ id, name, dose, perDay, notes }]
+      custom: [],          // ejercicios de tu fisio [{ id, name, dose, perDay, notes, knee: 'ambas'|'der'|'izq' }]
       hidden: {},          // { exerciseId: true }
-      criteria: {}         // { criterioId: true }
+      criteria: {}         // { 'der:criterioId': true }
     };
+  }
+
+  /** Convierte datos de la versión 1 (un único plan para las dos rodillas) al plan por rodilla. */
+  function migrate(s) {
+    if ((s.version || 1) >= VERSION) return s;
+    var po = s.phaseOverride;
+    s.phaseOverride = {};
+    if (typeof po === 'number') SIDES.forEach(function (k) { s.phaseOverride[k] = po; });
+
+    var crit = s.criteria || {};
+    s.criteria = {};
+    Object.keys(crit).forEach(function (id) {
+      if (!crit[id]) return;
+      if (id.indexOf(':') !== -1) s.criteria[id] = true;
+      else SIDES.forEach(function (k) { s.criteria[k + ':' + id] = true; });
+    });
+
+    var exs = (root.PROTOCOL && root.PROTOCOL.EXERCISES) || [];
+    var oneLeg = {};
+    exs.forEach(function (e) { if (e.legs === 'one') oneLeg[e.id] = true; });
+    Object.keys(s.done || {}).forEach(function (day) {
+      var d = s.done[day];
+      Object.keys(d).forEach(function (id) {
+        if (!oneLeg[id]) return;
+        SIDES.forEach(function (k) { d[id + '@' + k] = d[id]; });
+        delete d[id];
+      });
+    });
+
+    (s.custom || []).forEach(function (c) { if (!c.knee) c.knee = 'ambas'; });
+    if (s.profile) delete s.profile.sameSurgery;
+    s.version = VERSION;
+    return s;
   }
 
   function normalize(s) {
     var d = defaults();
     if (!s || typeof s !== 'object') return d;
+    if (!s.version) s.version = 1;
+    migrate(s);
     Object.keys(d).forEach(function (k) {
-      if (s[k] === undefined || s[k] === null && k !== 'profile' && k !== 'phaseOverride') s[k] = d[k];
+      if (s[k] === undefined || (s[k] === null && k !== 'profile')) s[k] = d[k];
     });
     return s;
   }

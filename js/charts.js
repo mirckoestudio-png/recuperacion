@@ -19,9 +19,30 @@
     return steps[steps.length - 1];
   }
 
+  /** Recorta una polilínea al intervalo [x0, x1] interpolando en los bordes. */
+  function clip(points, x0, x1) {
+    var out = [];
+    for (var i = 0; i < points.length; i++) {
+      var p = points[i], q = points[i + 1];
+      if (p.x >= x0 && p.x <= x1) out.push(p);
+      if (!q) break;
+      [x0, x1].forEach(function (b) {
+        if ((p.x < b && q.x > b)) out.push({ x: b, y: p.y + (q.y - p.y) * (b - p.x) / (q.x - p.x) });
+      });
+    }
+    return out.sort(function (a, b) { return a.x - b.x; });
+  }
+
   /**
-   * Gráfico de líneas por fecha.
-   * opts: { label, unit, series:[{key,name,points:[{x:'YYYY-MM-DD',y}]}], yMin, yMax, target:{y,label}, yFmt }
+   * Gráfico de líneas con eje X numérico (días).
+   * opts: {
+   *   label, unit,
+   *   series: [{ key, slot, name, points: [{ x, y }] }],
+   *   yMin, yMax,
+   *   target: { y, label },          línea horizontal de meta
+   *   reference: [{ x, y }],         curva de referencia discontinua
+   *   xFmt(x), tipFmt(x)             textos del eje y del tooltip
+   * }
    */
   function line(el, opts) {
     var width = Math.max(260, el.clientWidth || 320);
@@ -30,16 +51,20 @@
     var iw = width - m.l - m.r;
     var ih = height - m.t - m.b;
     var unit = opts.unit || '';
+    var xFmt = opts.xFmt || function (x) { return String(x); };
+    var tipFmt = opts.tipFmt || xFmt;
 
     var all = [];
     opts.series.forEach(function (s) { s.points.forEach(function (p) { all.push(p); }); });
     if (!all.length) { el.innerHTML = ''; return; }
 
-    var xs = all.map(function (p) { return D.toUTC(p.x); });
+    var xs = all.map(function (p) { return p.x; });
     var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
-    if (x1 - x0 < 2 * 86400000) { x0 -= 86400000; x1 += 86400000; }
+    if (x1 - x0 < 2) { x0 -= 1; x1 += 1; }
 
+    var ref = opts.reference ? clip(opts.reference, x0, x1) : [];
     var ys = all.map(function (p) { return p.y; });
+    ref.forEach(function (p) { ys.push(p.y); });
     if (opts.target) ys.push(opts.target.y);
     var yMin = Math.min(opts.yMin, Math.min.apply(null, ys));
     var yMax = Math.max(opts.yMax, Math.max.apply(null, ys));
@@ -48,8 +73,11 @@
     yMax = Math.ceil(yMax / step) * step;
     if (yMax === yMin) yMax = yMin + step;
 
-    function sx(ms) { return m.l + (ms - x0) / (x1 - x0) * iw; }
+    function sx(v) { return m.l + (v - x0) / (x1 - x0) * iw; }
     function sy(v) { return m.t + (1 - (v - yMin) / (yMax - yMin)) * ih; }
+    function path(pts) {
+      return pts.map(function (p, i) { return (i ? 'L' : 'M') + sx(p.x).toFixed(1) + ',' + sy(p.y).toFixed(1); }).join('');
+    }
 
     var svg = '';
     // Rejilla y eje Y
@@ -58,33 +86,31 @@
       svg += '<line class="grid" x1="' + m.l + '" x2="' + (m.l + iw) + '" y1="' + y + '" y2="' + y + '"/>';
       svg += '<text class="tick" x="' + (m.l - 6) + '" y="' + y + '" dy="0.32em" text-anchor="end">' + v + '</text>';
     }
-    // Eje X: 3 fechas
-    var xTicks = [x0, (x0 + x1) / 2, x1];
-    xTicks.forEach(function (ms, i) {
-      var key = D.fromUTC(Math.round(ms / 86400000) * 86400000);
+    // Eje X: 3 marcas
+    [x0, (x0 + x1) / 2, x1].forEach(function (xv, i) {
       var anchor = i === 0 ? 'start' : i === 2 ? 'end' : 'middle';
-      svg += '<text class="tick" x="' + sx(ms).toFixed(1) + '" y="' + (height - 8) + '" text-anchor="' + anchor + '">' + esc(D.format(key)) + '</text>';
+      svg += '<text class="tick" x="' + sx(xv).toFixed(1) + '" y="' + (height - 8) + '" text-anchor="' + anchor + '">' + esc(xFmt(Math.round(xv))) + '</text>';
     });
-    // Objetivo
+    // Meta
     if (opts.target) {
       var ty = sy(opts.target.y).toFixed(1);
       svg += '<line class="target" x1="' + m.l + '" x2="' + (m.l + iw) + '" y1="' + ty + '" y2="' + ty + '"/>';
       svg += '<text class="target-label" x="' + (m.l + 4) + '" y="' + (sy(opts.target.y) - 5).toFixed(1) + '">' + esc(opts.target.label) + '</text>';
     }
+    // Referencia
+    if (ref.length > 1) svg += '<path class="reference" d="' + path(ref) + '"/>';
     // Series
     var ends = [];
     opts.series.forEach(function (s, si) {
       if (!s.points.length) return;
-      var pts = s.points.slice().sort(function (a, b) { return a.x < b.x ? -1 : 1; });
-      var d = pts.map(function (p, i) {
-        return (i ? 'L' : 'M') + sx(D.toUTC(p.x)).toFixed(1) + ',' + sy(p.y).toFixed(1);
-      }).join('');
-      svg += '<path class="series s' + (si + 1) + '" d="' + d + '"/>';
+      var cls = 's' + (s.slot || si + 1);
+      var pts = s.points.slice().sort(function (a, b) { return a.x - b.x; });
+      svg += '<path class="series ' + cls + '" d="' + path(pts) + '"/>';
       pts.forEach(function (p) {
-        svg += '<circle class="dot s' + (si + 1) + '" cx="' + sx(D.toUTC(p.x)).toFixed(1) + '" cy="' + sy(p.y).toFixed(1) + '" r="4"/>';
+        svg += '<circle class="dot ' + cls + '" cx="' + sx(p.x).toFixed(1) + '" cy="' + sy(p.y).toFixed(1) + '" r="4"/>';
       });
       var last = pts[pts.length - 1];
-      ends.push({ name: s.name, si: si, x: sx(D.toUTC(last.x)), y: sy(last.y) });
+      ends.push({ name: s.name, x: sx(last.x), y: sy(last.y) });
     });
     // Etiquetas directas al final de cada línea, separadas si chocan
     ends.sort(function (a, b) { return a.y - b.y; });
@@ -103,37 +129,35 @@
       '<div class="tooltip" hidden></div>';
 
     // Tooltip con cruz al pasar el dedo / ratón
-    var byDate = {};
+    var byX = {};
     opts.series.forEach(function (s) {
-      s.points.forEach(function (p) {
-        (byDate[p.x] = byDate[p.x] || {})[s.key] = p.y;
-      });
+      s.points.forEach(function (p) { (byX[p.x] = byX[p.x] || {})[s.key] = p.y; });
     });
-    var dates = Object.keys(byDate).sort();
+    var xsSorted = Object.keys(byX).map(Number).sort(function (a, b) { return a - b; });
     var svgEl = el.querySelector('svg');
     var hit = el.querySelector('.hit');
     var cross = el.querySelector('.crosshair');
     var tip = el.querySelector('.tooltip');
-    var fmt = opts.yFmt || function (v) { return v + unit; };
+    var fmt = opts.yFmt || function (val) { return val + unit; };
 
     function show(evt) {
       var rect = svgEl.getBoundingClientRect();
       var px = (evt.clientX - rect.left) * (width / rect.width);
       var best = null, bestDist = Infinity;
-      dates.forEach(function (k) {
-        var dist = Math.abs(sx(D.toUTC(k)) - px);
-        if (dist < bestDist) { bestDist = dist; best = k; }
+      xsSorted.forEach(function (xv) {
+        var dist = Math.abs(sx(xv) - px);
+        if (dist < bestDist) { bestDist = dist; best = xv; }
       });
-      if (!best) return;
-      var cx = sx(D.toUTC(best));
+      if (best === null) return;
+      var cx = sx(best);
       cross.setAttribute('x1', cx); cross.setAttribute('x2', cx);
       cross.setAttribute('visibility', 'visible');
       var rows = opts.series.map(function (s, si) {
-        var val = byDate[best][s.key];
-        return '<div class="tt-row"><span class="sw s' + (si + 1) + '"></span>' + esc(s.name) +
+        var val = byX[best][s.key];
+        return '<div class="tt-row"><span class="sw s' + (s.slot || si + 1) + '"></span>' + esc(s.name) +
           '<b>' + (val === undefined ? '—' : esc(fmt(val))) + '</b></div>';
       }).join('');
-      tip.innerHTML = '<div class="tt-date">' + esc(D.format(best, { weekday: 'short', day: 'numeric', month: 'short' })) + '</div>' + rows;
+      tip.innerHTML = '<div class="tt-date">' + esc(tipFmt(best)) + '</div>' + rows;
       tip.hidden = false;
       var left = cx / width * rect.width;
       var tw = tip.offsetWidth;
