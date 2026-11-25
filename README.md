@@ -25,10 +25,22 @@ Es una app web instalable en el móvil (PWA): funciona sin conexión, no necesit
 
 ## Cómo usarla en el móvil
 
-La app tiene que estar publicada en una dirección `https://` para poder instalarla. Opciones gratuitas:
+La app tiene que estar publicada en una dirección `https://` para poder instalarla.
 
-1. **GitHub Pages** (si el repositorio es público, o con plan de pago si es privado): en GitHub ve a *Settings → Pages*, elige la rama y la carpeta raíz `/`. Te dará una dirección tipo `https://<usuario>.github.io/recuperacion/`.
-2. **Netlify Drop**: entra en <https://app.netlify.com/drop> y arrastra la carpeta del proyecto.
+### GitHub Pages
+
+1. En GitHub, abre el repositorio → **Settings → Pages**.
+2. En *Build and deployment → Source*, elige **Deploy from a branch**.
+3. En *Branch*, elige la rama de la app y la carpeta **`/ (root)`**, y pulsa **Save**.
+4. En 1–2 minutos estará en **<https://mirckoestudio-png.github.io/recuperacion/>**.
+
+Con una cuenta gratuita de GitHub, Pages solo funciona si el repositorio es **público** (*Settings → General → Danger Zone → Change visibility*). Hacerlo público solo muestra el código de la app: tus registros nunca salen de tu móvil.
+
+Cada vez que se suban cambios a esa rama, la web se actualiza sola.
+
+### Alternativa: Netlify Drop
+
+Entra en <https://app.netlify.com/drop> y arrastra la carpeta del proyecto.
 
 Luego ábrela en el móvil y:
 
