@@ -16,7 +16,7 @@
   const modalRoot = document.getElementById('modal-root');
   const toastEl = document.getElementById('toast');
 
-  const VERSION = '2.0.0';
+  const VERSION = '2.0.1';
 
   // Estado de la interfaz (no se guarda)
   const ui = { expanded: {}, logDate: null, lastRoute: null };
@@ -1191,6 +1191,14 @@
   render();
 
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    // Si ya había una versión instalada y llega una nueva, recargar una vez para mostrarla.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading || timer) return;
+      reloading = true;
+      location.reload();
+    });
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => { /* sin modo offline */ });
     });

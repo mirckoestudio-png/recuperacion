@@ -3,7 +3,7 @@
  * Sirve primero desde la caché y actualiza en segundo plano.
  * Cambia CACHE al publicar una versión nueva.
  */
-const CACHE = 'rodillas-v2';
+const CACHE = 'rodillas-v3';
 const FILES = [
   './',
   './index.html',
@@ -22,7 +22,12 @@ const FILES = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' evita guardar copias antiguas de la caché HTTP del navegador.
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -39,7 +44,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.open(CACHE).then((cache) =>
       cache.match(req, { ignoreSearch: true }).then((cached) => {
-        const network = fetch(req)
+        const network = fetch(req.url, { cache: 'no-cache' })
           .then((res) => {
             if (res && res.ok) cache.put(req, res.clone());
             return res;
