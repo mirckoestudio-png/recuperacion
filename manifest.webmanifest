@@ -1,0 +1,18 @@
+{
+  "name": "Rodillas · Recuperación LCA y menisco",
+  "short_name": "Rodillas",
+  "description": "Plan diario de rehabilitación tras cirugía de LCA y menisco en ambas rodillas.",
+  "lang": "es",
+  "start_url": "./index.html#hoy",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3f6f5",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
